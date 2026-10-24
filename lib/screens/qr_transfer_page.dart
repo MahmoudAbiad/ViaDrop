@@ -29,6 +29,19 @@ class QrTransferPage extends StatefulWidget {
 
 class _QrTransferPageState extends State<QrTransferPage> {
   final _manager = TransferManager();
+
+  // QR-only scanner configuration. The default mobile_scanner throttle is
+  // intended for ordinary barcodes, not a continuously changing data stream.
+  // Keep a less aggressive decoder on old phones and reserve unthrottled
+  // scanning for explicitly chosen optical high-throughput profiles.
+  final MobileScannerController _standardScanner = MobileScannerController(
+    formats: const [BarcodeFormat.qrCode],
+  );
+  final MobileScannerController _streamScanner = MobileScannerController(
+    formats: const [BarcodeFormat.qrCode],
+    detectionSpeed: DetectionSpeed.unrestricted,
+    returnImage: false,
+  );
   OneWaySession? _session;
   PhysicalDecoder _decoder = PhysicalDecoder(600 * 1024);
   File? _selected;
@@ -98,6 +111,8 @@ class _QrTransferPageState extends State<QrTransferPage> {
     _sendToken?.cancelled = true;
     unawaited(WakelockPlus.disable());
     _manager.dispose();
+    _standardScanner.dispose();
+    _streamScanner.dispose();
     super.dispose();
   }
 
@@ -343,17 +358,30 @@ class _QrTransferPageState extends State<QrTransferPage> {
       alignment: Alignment.center,
       padding: const EdgeInsets.all(6),
       color: Colors.white,
-      child: QrImageView.withQr(qr: qr, size: 324),
+      child: RepaintBoundary(
+        child: QrImageView.withQr(
+          qr: qr,
+          size: version == 40
+              ? MediaQuery.sizeOf(context).width - 48
+              : 324,
+        ),
+      ),
     );
   }
 
-  Widget _scanner() => SizedBox(
-    height: 320,
-    child: ClipRRect(
-      borderRadius: BorderRadius.circular(16),
-      child: MobileScanner(onDetect: _scan),
-    ),
-  );
+  Widget _scanner() {
+    final isStreaming = _scanData && (_profile?.qrFps ?? 0) >= 9;
+    return SizedBox(
+      height: isStreaming ? MediaQuery.sizeOf(context).width - 32 : 320,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: MobileScanner(
+          controller: isStreaming ? _streamScanner : _standardScanner,
+          onDetect: _scan,
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) => Scaffold(
