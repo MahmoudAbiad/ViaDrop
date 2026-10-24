@@ -4,12 +4,14 @@
 - `lib/core/manager.dart`: encrypted staging, verification, local history and storage.
 - `lib/core/vault.dart`: streaming VDP1 authenticated AES-256-GCM records with final
   length/SHA-256 checks. PBKDF2 converts the supplied passphrase into a file key.
-- `lib/core/qr_pairing.dart`: ephemeral X25519 and transcript-bound secret derivation;
-  shared by QR and acoustic pairing. Rejects all-zero shared secrets (RFC 7748 §6.1).
-  A domain-separated SHA-256 fingerprint (48 displayed bits) lets users compare
-  the exchange in person. It is not a password and is not sent as a secret.
-- `lib/core/acoustic_pairing.dart`: HMAC ready acknowledgement; this proves key
-  possession, not the identity of an intended human. The UI also requires comparison.
+- `lib/core/one_way_session.dart`: creates a 32-byte random secret and a
+  session identifier. Encodes both in a short VDS2 announcement, parsed
+  identically from a static start QR and an audible ggwave start packet.
+  The sender keeps the secret to seal the payload; receiver reads it from
+  the announcement and filters fountain packets by session ID.
+- `lib/core/qr_pairing.dart` and `lib/core/acoustic_pairing.dart`:
+  previous two-way X25519 protocol remains in the repository for legacy tests
+  only; current QR/audio UI does not invoke it.
 - `lib/engines/physical.dart`: bounded in-memory small-file fountain packets,
   CRC validation and session-bound reconstruction. Screens call QR/camera or
   speaker/microphone adapters only. These paths have no LAN/Bluetooth fallback.
@@ -17,13 +19,16 @@
 - `lib/engines/native.dart` and Kotlin MainActivity: Android Bluetooth and audio I/O.
 - `lib/screens`: physical-channel UX; `radio_transfer_page.dart`: LAN/Bluetooth UX.
 
-Pairing and envelope security have not undergone independent security review.
-Fingerprint comparison requires checking both physical screens. Do not describe
-this experimental application as independently audited end-to-end encryption.
-Reference: https://www.rfc-editor.org/rfc/rfc7748#section-6.1
+Security trade-off: VDS2 physically broadcasts the symmetric encryption secret.
+The AES-GCM records verify integrity against accidental corruption and against
+someone who *did not receive* the secret, but an observer of the announcement
+can decrypt and forge frames. There is no peer authentication, no forward secrecy,
+and no receiver acknowledgement. Do not call this end-to-end confidential
+encryption. The older X25519 pairing code is not used in current physical flows.
 
 Fast audio uses an isolated `ofdm_codec` JNI adapter over a pinned portable Cyrinx
-subset and KISS FFT. Ggwave still handles short acoustic pairing messages.
+subset and KISS FFT. Ggwave handles the short one-way start announcements
+and slower optional data transfer; receiver playback is never started.
 The receiver runs bounded OFDM work on a separate worker so it does not block
 AudioRecord. All files still pass through the same encrypted fountain transport
 and final SHA-256 verification. Users select fast/slow audio explicitly; no
