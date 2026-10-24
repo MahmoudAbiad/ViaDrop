@@ -8,7 +8,7 @@ void main() {
     displayHz: 60, microphone: true,
     audioInput48k: true, audioOutput48k: true,
     ofdmNative: true,
-    androidSdk: 33, processorCores: 8,
+    androidSdk: 33, processorCores: 8, displayWidthPx: 1080,
     ultrasoundInput: false, ultrasoundOutput: false,
   );
   const older = PhysicalCapabilities(
@@ -20,7 +20,7 @@ void main() {
   );
 
   test('only implemented and provisionally supported modes are selectable', () {
-    expect(modern.recommended(PhysicalMedium.qr)?.id, 'qr-dense');
+    expect(modern.recommended(PhysicalMedium.qr)?.id, 'qr-ultra');
     expect(modern.recommended(PhysicalMedium.audio)?.id, 'audio-turbo');
     expect(older.recommended(PhysicalMedium.qr)?.id, 'qr-standard');
     expect(older.recommended(PhysicalMedium.audio)?.id, 'audio-audible');
@@ -34,6 +34,10 @@ void main() {
     expect(older.availability(physicalProfileById('qr-dense')!).enabled, isFalse);
     expect(physicalProfileById('qr-dense')!.qrVersion, 17);
     expect(physicalProfileById('qr-dense')!.qrBlockBytes, 512);
+    expect(physicalProfileById('qr-ultra')!.qrVersion, 40);
+    expect(physicalProfileById('qr-ultra')!.qrBlockBytes, 2400);
+    expect(physicalProfileById('qr-ultra')!.qrFps, 30);
+    expect(older.availability(physicalProfileById('qr-ultra')!).enabled, isFalse);
     expect(older.availability(physicalProfileById('audio-ofdm')!).enabled, isFalse);
     expect(older.availability(physicalProfileById('audio-turbo')!).enabled, isFalse);
     expect(physicalProfileById('audio-turbo')!.audioFrameGapMs, 40);
@@ -72,7 +76,7 @@ void main() {
     expect(OneWaySession.parse(fast.announcement)!.profileId,
         isNot('qr-standard'));
     expect(OneWaySession.parse(
-      fast.announcement.replaceFirst('qr-fast', 'audio-turbo'),
+      fast.announcement.replaceFirst('qr-fast', 'not-a-profile'),
     ), isNull);
     expect(OneWaySession.parse(
       fast.announcement.replaceFirst('VDS3:', 'VDS2:'),
