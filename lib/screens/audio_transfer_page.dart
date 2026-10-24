@@ -185,7 +185,8 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
           await NativeBridge.play(packet, profile.audioHigh, fast: profile.audioFast);
         },
         stopListening: NativeBridge.stopAudio,
-      )..audioBlockLength = profile.audioBlockBytes;
+      )..audioBlockLength = profile.audioBlockBytes
+       ..audioFrameGapMs = profile.audioFrameGapMs;
       await engine.send(encrypted, null, token, (sent, total) {
         if (mounted && total > 0) {
           setState(() => _progress = ((sent % total) / total).clamp(0, 1));
