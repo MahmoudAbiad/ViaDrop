@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:viadrop/core/qr_pairing.dart';
+import 'package:viadrop/core/acoustic_pairing.dart';
 import 'package:viadrop/core/transfer.dart';
 import 'package:viadrop/core/vault.dart';
 import 'package:viadrop/engines/physical.dart';
@@ -264,5 +265,17 @@ void main() {
     expect(decoder.header, isNull);
     final matched = PhysicalDecoder(1024, expectedSessionId: 71);
     expect(matched.add(frame), orderedEquals(bytes));
+  });
+
+  test('acoustic ready token authenticates completed X25519 pairing', () async {
+    final receiver = await OpticalPairing.createSender();
+    final sender = await OpticalPairing.acceptInvitation(receiver.invitation);
+    expect(sender, isNotNull);
+    expect(await receiver.acceptReply(sender!.reply), isTrue);
+    final ready = AcousticReady.token(receiver);
+    expect(AcousticReady.verify(sender, ready), isTrue);
+    expect(AcousticReady.verify(sender, ready + 'X'), isFalse);
+    final third = await OpticalPairing.createSender();
+    expect(() => AcousticReady.token(third), throwsStateError);
   });
 }
