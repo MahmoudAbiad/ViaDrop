@@ -12,6 +12,7 @@ class PhysicalProfile {
     this.implemented = true,
     this.qrFps = 0,
     this.qrBlockBytes = 0,
+    this.qrVersion = 13,
     this.audioBlockBytes = 0,
     this.audioFast = false,
     this.audioHigh = false,
@@ -20,7 +21,7 @@ class PhysicalProfile {
   final String id, title, description;
   final PhysicalMedium medium;
   final bool implemented, audioFast, audioHigh;
-  final int qrFps, qrBlockBytes, audioBlockBytes;
+  final int qrFps, qrBlockBytes, qrVersion, audioBlockBytes;
 }
 
 const physicalProfiles = <PhysicalProfile>[
@@ -30,9 +31,10 @@ const physicalProfiles = <PhysicalProfile>[
     implemented: false,
   ),
   PhysicalProfile(
-    id: 'qr-dense', medium: PhysicalMedium.qr, title: 'High-Density QR',
-    description: 'QR كثيف واستقبال عالي السرعة — لم يُنفّذ بعد',
-    implemented: false,
+    id: 'qr-dense', medium: PhysicalMedium.qr,
+    title: 'High-Density QR • تجريبي',
+    description: '512 بايت/رمز QR الإصدار 17، حتى 9 رموز/ثانية. يحتاج كاميرا 30 FPS وشاشة 60 Hz؛ نجاح المسح غير مضمون.',
+    qrFps: 9, qrBlockBytes: 512, qrVersion: 17,
   ),
   PhysicalProfile(
     id: 'qr-fast', medium: PhysicalMedium.qr, title: 'QR Fast • تجريبي',
@@ -131,6 +133,12 @@ class PhysicalCapabilities {
     if (p.medium == PhysicalMedium.qr) {
       if (!camera) {
         return const ProfileAvailability(false, 'لا توجد كاميرا متاحة');
+      }
+      if (p.id == 'qr-dense' &&
+          (cameraMaxFps < 30 || displayHz < 59)) {
+        return const ProfileAvailability(
+          false, 'QR كثيف: تحتاج كاميرا 30 FPS وشاشة 60 Hz تقريباً',
+        );
       }
       if (p.id == 'qr-fast' &&
           (cameraMaxFps < 30 || displayHz < 50)) {
