@@ -8,6 +8,7 @@ void main() {
     displayHz: 60, microphone: true,
     audioInput48k: true, audioOutput48k: true,
     ofdmNative: true,
+    androidSdk: 33, processorCores: 8,
     ultrasoundInput: false, ultrasoundOutput: false,
   );
   const older = PhysicalCapabilities(
@@ -20,7 +21,7 @@ void main() {
 
   test('only implemented and provisionally supported modes are selectable', () {
     expect(modern.recommended(PhysicalMedium.qr)?.id, 'qr-dense');
-    expect(modern.recommended(PhysicalMedium.audio)?.id, 'audio-ofdm');
+    expect(modern.recommended(PhysicalMedium.audio)?.id, 'audio-turbo');
     expect(older.recommended(PhysicalMedium.qr)?.id, 'qr-standard');
     expect(older.recommended(PhysicalMedium.audio)?.id, 'audio-audible');
 
@@ -34,6 +35,9 @@ void main() {
     expect(physicalProfileById('qr-dense')!.qrVersion, 17);
     expect(physicalProfileById('qr-dense')!.qrBlockBytes, 512);
     expect(older.availability(physicalProfileById('audio-ofdm')!).enabled, isFalse);
+    expect(older.availability(physicalProfileById('audio-turbo')!).enabled, isFalse);
+    expect(physicalProfileById('audio-turbo')!.audioFrameGapMs, 40);
+    expect(physicalProfileById('audio-ofdm')!.audioFrameGapMs, 180);
   });
 
   test('unknown or failed probes never enable a transfer mode', () {
