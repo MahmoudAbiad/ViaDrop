@@ -3,9 +3,11 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:viadrop/core/qr_pairing.dart';
 import 'package:viadrop/core/transfer.dart';
 import 'package:viadrop/core/vault.dart';
 import 'package:viadrop/engines/physical.dart';
+import 'package:viadrop/engines/qr_codec.dart';
 import 'package:viadrop/third_party/onesend/fountain.dart';
 import 'package:viadrop/third_party/onesend/protocol.dart';
 
@@ -222,5 +224,45 @@ void main() {
     expect(receiver.add(frameFor(
       goodEncoder, newPayload, 202, goodChecksum, 1,
     )), orderedEquals(newPayload));
+  });
+
+  test('optical pairing derives matching keys without a shared password', () async {
+    final sender = await OpticalPairing.createSender();
+    final receiver = await OpticalPairing.acceptInvitation(sender.invitation);
+    expect(receiver, isNotNull);
+    expect(sender.passphrase, isNull);
+    expect(await sender.acceptReply('VDREPLY1:bad'), isFalse);
+    expect(await sender.acceptReply(receiver!.reply), isTrue);
+    expect(sender.passphrase, isNotNull);
+    expect(sender.passphrase, receiver.passphrase);
+    expect(sender.passphrase!.length, greaterThan(12));
+  });
+
+  test('Base45 QR frames survive arbitrary bytes and reject malformed data', () {
+    for (final size in [1, 2, 3, 10, 96, 313, 512]) {
+      final bytes = Uint8List.fromList(
+        List<int>.generate(size, (i) => (i * 151 + 19) & 255),
+      );
+      final frame = encodeQrFrame(bytes);
+      expect(decodeQrFrame(frame), orderedEquals(bytes));
+    }
+    expect(decodeQrFrame('VDQ2:!'), isNull);
+    expect(decodeQrFrame('VDQ2:ZZZ'), isNull);
+    expect(decodeQrFrame('VDQ2:éé'), isNull);
+  });
+
+  test('paired QR decoder refuses frames for other transfer sessions', () {
+    final bytes = Uint8List.fromList(List<int>.generate(80, (i) => i));
+    final encoder = LTEncoder(payload: bytes, blockLength: 80, sessionId: 71);
+    final frame = packFrame(FrameHeader(
+      sessionId: 71, sequence: 0, blockCount: encoder.blockCount,
+      blockLength: 80, totalLength: bytes.length,
+      payloadChecksum: crc32(bytes),
+    ), encoder.encode(0));
+    final decoder = PhysicalDecoder(1024, expectedSessionId: 72);
+    expect(decoder.add(frame), isNull);
+    expect(decoder.header, isNull);
+    final matched = PhysicalDecoder(1024, expectedSessionId: 71);
+    expect(matched.add(frame), orderedEquals(bytes));
   });
 }
