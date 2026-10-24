@@ -10,6 +10,10 @@ class NativeBridge {
  static Future<void> play(Uint8List data,bool high,{bool fast=false})async=>methods.invokeMethod('audioPlay',{'data':data,'high':high,'fast':fast});
  static Future<void> listen({bool fast=false})async{if(!await Permission.microphone.request().isGranted)throw StateError('Microphone permission denied');await methods.invokeMethod('audioListen',{'fast':fast});}
  static Future<void> stopAudio()async=>methods.invokeMethod('audioStop');
+ static Future<Map<dynamic,dynamic>> probePhysicalCapabilities() async {
+  final value = await methods.invokeMethod<dynamic>('physicalCapabilities');
+  return value is Map ? Map<dynamic,dynamic>.from(value) : <dynamic,dynamic>{};
+ }
 }
 class BluetoothEngine extends TransferEngine {
  @override Channel get channel=>Channel.bluetooth;
