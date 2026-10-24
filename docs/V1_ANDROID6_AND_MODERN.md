@@ -1,9 +1,9 @@
 # ViaDrop V1: Android 6 and modern releases
 
-There are two independent GitHub Actions workflows on `recovery-dev`:
+There are two independent GitHub Actions workflows on `main`:
 
 - **Android 6 / Galaxy J7 Legacy**: Flutter 3.32.8, minSdk 23, armeabi-v7a, `ViaDrop-V1-Android6-J7-ARM32-release.apk`. A separate dependency manifest `ci/pubspec_android6.yaml` keeps the older framework/plugin compatibility without downgrading the modern app.
-- **Modern Android**: current Flutter stable, minSdk 24, arm64-v8a, `ViaDrop-V1-Modern-ARM64-release.apk`.
+- **Modern Android**: Flutter 3.47.8, minSdk 24, arm64-v8a, `ViaDrop-V1-Modern-ARM64-release.apk`.
 
 Both build optimized `--release` APKs and independently run the Dart tests, analyzer, and APK badging/native-library checks.
 

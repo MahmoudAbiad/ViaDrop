@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'screens/qr_transfer_page.dart';
@@ -6,6 +8,23 @@ import 'screens/audio_transfer_page.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  LicenseRegistry.addLicense(() async* {
+    for (final entry in const {
+      'Cyrinx': ['Cyrinx-Apache-2.0.txt', 'Cyrinx-NOTICE.txt'],
+      'KISS FFT': ['KISS-FFT-BSD.txt'],
+      'ggwave': ['ggwave-MIT.txt'],
+      'Reed-Solomon': ['ReedSolomon-MIT.txt'],
+      'Ooura FFT': ['Ooura.txt'],
+      'OneSend': ['OneSend.txt', 'OneSend-NOTICES.md'],
+      'Cairo': ['Cairo-OFL.txt'],
+      'Manrope': ['Manrope-OFL.txt'],
+    }.entries) {
+      for (final file in entry.value) {
+        yield LicenseEntryWithLineBreaks([entry.key],
+            await rootBundle.loadString('assets/licenses/$file'));
+      }
+    }
+  });
   runApp(const ViaDropApp());
 }
 
@@ -55,7 +74,12 @@ class ViaDropHome extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('ViaDrop'), centerTitle: true),
+      appBar: AppBar(title: const Text('ViaDrop'), centerTitle: true,
+        actions: [IconButton(
+          tooltip: 'تراخيص البرمجيات',
+          icon: const Icon(Icons.info_outline),
+          onPressed: () => showLicensePage(context: context, applicationName: 'ViaDrop'),
+        )]),
       body: SafeArea(child: ListView(
         padding: const EdgeInsets.all(20),
         children: [
@@ -97,7 +121,7 @@ class ViaDropHome extends StatelessWidget {
             child: ListTile(
               leading: const CircleAvatar(child: Icon(Icons.graphic_eq)),
               title: const Text('بالصوت'),
-              subtitle: const Text('قرّب الجهازين واتركهما يتقارنان تلقائياً.'),
+              subtitle: const Text('صوت سريع تجريبي • اقتران تلقائي ومقارنة بصمة.'),
               trailing: const Icon(Icons.chevron_left),
               onTap: () => _open(context, const AudioTransferPage()),
             ),
