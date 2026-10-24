@@ -24,7 +24,7 @@ class QrTransferPage extends StatefulWidget {
 class _QrTransferPageState extends State<QrTransferPage> {
   final _manager = TransferManager();
   final _pass = TextEditingController();
-  final _decoder = PhysicalDecoder(600 * 1024);
+  PhysicalDecoder _decoder = PhysicalDecoder(600 * 1024);
   File? _selected;
   File? _received;
   CancelToken? _token;
@@ -140,6 +140,7 @@ class _QrTransferPageState extends State<QrTransferPage> {
     }
     _manager.begin();
     _manager.update(Phase.waiting);
+    _decoder = PhysicalDecoder(600 * 1024);
     setState(() {
       _receiving = true;
       _finalizing = false;
@@ -189,12 +190,14 @@ class _QrTransferPageState extends State<QrTransferPage> {
           }
         } finally {
           if (await encrypted.exists()) await encrypted.delete();
+          if (mounted) setState(() => _finalizing = false);
         }
         return;
       } catch (e) {
         if (mounted) {
           setState(() {
             _receiving = false;
+            _finalizing = false;
             _message = 'فشل التحقق من الاستقبال: $e';
           });
         }
