@@ -297,7 +297,10 @@ class _QrTransferPageState extends State<QrTransferPage> {
       final received = await _manager.accept(encrypted, password, Channel.qr);
       if (mounted) setState(() {
         _received = received;
-        _message = 'تم استلام الملف والتحقق من سلامته بنجاح.';
+        _message = 'تم استلام الملف والتحقق من سلامته. '
+            'سرعة حمولة الاستقبال: ${_decoder.payloadKiBPerSecond.toStringAsFixed(1)} KiB/s، '
+            'إطارات سليمة: ${_decoder.validFrames}، '
+            'إطارات مرفوضة: ${_decoder.rejectedFrames}.';
       });
     } catch (error) {
       if (mounted) setState(() => _message = 'فشل التحقق: $error');
