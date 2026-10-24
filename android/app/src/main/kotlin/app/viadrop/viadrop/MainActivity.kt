@@ -69,28 +69,49 @@ class MainActivity:FlutterActivity(){
  }
  private fun listenAudio(){
   if(listening)return
+  // The previous recording worker owns its AudioRecord until its finally
+  // block releases it. Never create a second one while that release is pending.
+  if(recorder!=null)throw IOException("Previous microphone session is closing. Retry.")
+  val generation=audioGeneration
   val min=AudioRecord.getMinBufferSize(48000,AudioFormat.CHANNEL_IN_MONO,AudioFormat.ENCODING_PCM_16BIT)
   val r=AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION,48000,AudioFormat.CHANNEL_IN_MONO,AudioFormat.ENCODING_PCM_16BIT,maxOf(min,8192))
   if(r.state!=AudioRecord.STATE_INITIALIZED){r.release();throw IOException("Microphone unavailable")}
   recorder=r
   listening=true
   try{r.startRecording()}catch(e:Exception){
-   // A failed start must not leave the receiver permanently marked active.
    listening=false
    if(recorder===r)recorder=null
    r.release()
    throw e
   }
-  workers.execute{val h=waveInit();try{if(h<0)throw IOException("Decoder unavailable");val b=ByteArray(2048);while(listening){val n=r.read(b,0,b.size);if(n<0)throw IOException("Microphone read failed");if(n>0){waveDecode(h,b,n)?.let{emit(mapOf("type" to "audioData","data" to it))}}}}
-   catch(e:Exception){if(listening)emit(mapOf("type" to "error","message" to(e.message?:"Audio error")))}
-   finally{
+  workers.execute{
+   var h=-1L
+   try{
+    h=waveInit()
+    if(h<0)throw IOException("Decoder unavailable")
+    val b=ByteArray(2048)
+    // An earlier worker must never resume when a newer session sets
+    // listening=true again after Stop.
+    while(listening&&audioGeneration==generation&&recorder===r){
+     val n=r.read(b,0,b.size)
+     if(n<0)throw IOException("Microphone read failed")
+     if(n>0&&listening&&audioGeneration==generation&&recorder===r){
+      waveDecode(h,b,n)?.let{data->
+       if(listening&&audioGeneration==generation&&recorder===r)
+        emit(mapOf("type" to "audioData","data" to data))
+      }
+     }
+    }
+   }catch(e:Exception){
+    if(listening&&audioGeneration==generation&&recorder===r)
+     emit(mapOf("type" to "error","message" to(e.message?:"Audio error")))
+   }finally{
     if(h>=0)waveFree(h)
     try{r.stop()}catch(_:Exception){}
     r.release()
-    // If decoding stops unexpectedly, permit the next Listen attempt.
-    // Do not reset a newer recording session that was started meanwhile.
     if(recorder===r){recorder=null;listening=false}
-   }}
+   }
+  }
  }
  private fun stopAudio(){audioGeneration++;listening=false;try{recorder?.stop()}catch(_:Exception){};try{track?.pause()}catch(_:Exception){}}
  private fun sendBluetooth(address:String,path:String){
