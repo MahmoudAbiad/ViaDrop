@@ -1,14 +1,14 @@
 name: ViaDrop V1 Legacy — Android 6 ARM32
 on:
   push:
-    branches: [recovery-dev]
+    branches: [main]
   workflow_dispatch:
 jobs:
   android6-arm32-release:
     runs-on: ubuntu-latest
     timeout-minutes: 65
     steps:
-      - name: Checkout development branch
+      - name: Checkout main
         uses: actions/checkout@v4
       - name: Use compatible Java 17 toolchain
         uses: actions/setup-java@v4

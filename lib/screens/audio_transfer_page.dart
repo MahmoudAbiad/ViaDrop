@@ -9,6 +9,7 @@ import 'package:open_filex/open_filex.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../core/acoustic_pairing.dart';
+import '../core/audio_estimate.dart';
 import '../core/qr_pairing.dart';
 import '../core/manager.dart';
 import '../core/transfer.dart';
@@ -32,10 +33,13 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
   Future<void>? _beaconTask;
   Future<void>? _replyTask;
   bool _pairingSender = false;
+  bool _identityConfirmed = false;
+  bool _senderReady = false;
   bool _pairingReceiver = false;
   bool _answerBusy = false;
   String? _acceptedReply;
   File? _source;
+  int _sourceBytes = 0;
   File? _result;
   PhysicalDecoder _decoder = PhysicalDecoder(64 * 1024);
   CancelToken? _sendToken;
@@ -66,7 +70,7 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
   }
 
   bool get _active =>
-      _receiving || _pairingSender || _listenStarting || _listenStopping || _sending || _finalizing;
+      _receiving || _pairingSender || _senderReady || _listenStarting || _listenStopping || _sending || _finalizing;
 
   Future<void> _pick() async {
     try {
@@ -74,7 +78,12 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
       if (files == null || files.files.isEmpty || !mounted) return;
       final path = files.files.single.path;
       if (path == null) throw const FileSystemException('Missing file path');
-      setState(() => _source = File(path));
+      final size = await File(path).length();
+      if (!mounted) return;
+      setState(() {
+        _source = File(path);
+        _sourceBytes = size;
+      });
     } catch (error) {
       _show('تعذر اختيار الملف: ' + error.toString());
     }
@@ -91,7 +100,7 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
   }
 
   Future<void> _startSend() async {
-    if (!_ready || _sending || _pairing?.passphrase == null) {
+    if (!_ready || _sending || !_identityConfirmed || _pairing?.passphrase == null) {
       _show('لم يكتمل الاقتران الصوتي.');
       return;
     }
@@ -154,7 +163,7 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
   }
 
   Future<void> _stopSend() async {
-    if (_pairingSender && !_sending) {
+    if ((_pairingSender || _senderReady) && !_sending) {
       await _stopReceive();
       _show('تم إلغاء الاقتران الصوتي.');
       return;
@@ -176,6 +185,8 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
       }
       await WakelockPlus.enable();
       _pairing = null;
+      _identityConfirmed = false;
+      _senderReady = false;
       _events = NativeBridge.events.listen(
         _handleEvent,
         onError: (Object error) =>
@@ -244,15 +255,20 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
     if (!_pairingSender || pair?.passphrase == null ||
         !AcousticReady.verify(pair!, ready)) return;
     _pairingSender = false;
+    _listenStarting = true;
     await _replyTask;
+    if (!mounted || _pairing != pair || !_listenStarting) return;
     try {
       await NativeBridge.stopAudio();
       await _events?.cancel();
       _events = null;
     } catch (_) {}
     if (mounted) {
-      _show('تم اقتران الهاتفين صوتياً. يبدأ الآن بث الملف المشفّر.');
-      unawaited(_startSend());
+      setState(() {
+        _listenStarting = false;
+        _senderReady = true;
+        _status = 'أكد تطابق البصمة على الهاتفين لبدء بث الملف.';
+      });
     }
   }
 
@@ -270,6 +286,10 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
         _decoder = PhysicalDecoder(
           64 * 1024, expectedSessionId: pair.sessionId,
         );
+      }
+      if (!_identityConfirmed) {
+        _show('قارن بصمة الاقتران مع الجهاز المرسل ثم أكد التطابق.');
+        return;
       }
       await NativeBridge.play(
         Uint8List.fromList(utf8.encode(AcousticReady.token(pair))), false,
@@ -295,6 +315,8 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
     try {
       _pairing = await OpticalPairing.createSender();
       _acceptedReply = null;
+      _identityConfirmed = false;
+      _senderReady = false;
       _answerBusy = false;
       _decoder = PhysicalDecoder(64 * 1024);
       _manager.begin();
@@ -365,7 +387,7 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
         unawaited(_acceptAcousticReply(text));
         return;
       }
-      if (_pairing?.passphrase == null) return;
+      if (_pairing?.passphrase == null || !_identityConfirmed) return;
     }
 
     try {
@@ -422,8 +444,11 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
     // stopping guard active until all resources have been released.
     if (_listenStopping) return;
     _listenStopping = true;
+    _listenStarting = false;
     _pairingSender = false;
     _pairingReceiver = false;
+    _senderReady = false;
+    _identityConfirmed = false;
     if (mounted) setState(() => _receiving = false);
     try {
       try { await NativeBridge.stopAudio(); } catch (_) {}
@@ -451,6 +476,9 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
 
   @override
   Widget build(BuildContext context) {
+    final bytes = _text.text.trim().isNotEmpty
+        ? utf8.encode(_text.text).length : _sourceBytes;
+    final estimate = AudioEstimate.forInputBytes(bytes);
     return Scaffold(
       appBar: AppBar(title: const Text('ViaDrop • Audio')),
       body: SafeArea(child: ListView(
@@ -478,6 +506,7 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
           if (_sendMode) ...[
             TextField(
               controller: _text,
+              onChanged: (_) => setState(() {}),
               enabled: !_active,
               maxLines: 3,
               decoration: const InputDecoration(
@@ -491,19 +520,28 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
               icon: const Icon(Icons.attach_file),
               label: Text(_source?.uri.pathSegments.last ?? 'أو اختر ملفاً صغيراً'),
             ),
+            if (_source != null || _text.text.trim().isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: Text(bytes > 48 * 1024
+                    ? 'الحجم يتجاوز حد الصوت التجريبي (48KB).'
+                    : 'تقدير مبدئي: ${estimate.lowerMinutes}–${estimate.upperMinutes} دقيقة. '
+                      'لا يشمل الاقتران، وقد يزيد مع الضجيج أو فقد الإشارات.'),
+              ),
             SwitchListTile(
               title: const Text('الترددات العالية (تجريبية)'),
               subtitle: const Text('قد لا تدعمها سماعة أو ميكروفون بعض الهواتف.'),
               value: _highFrequency,
               onChanged: _active ? null : (value) => setState(() => _highFrequency = value),
             ),
-            if (!_sending && !_pairingSender)
+            if (!_sending && !_pairingSender && !_senderReady)
               FilledButton.icon(
-                onPressed: _ready && !_active ? _beginAudioSendPairing : null,
+                onPressed: _ready && !_active && bytes <= 48 * 1024
+                    ? _beginAudioSendPairing : null,
                 icon: const Icon(Icons.volume_up),
                 label: const Text('إرسال • اقتران صوتي تلقائي'),
               ),
-            if (_sending || _pairingSender)
+            if (_sending || _pairingSender || _senderReady)
               FilledButton.tonalIcon(
                 onPressed: _stopSend,
                 icon: const Icon(Icons.stop),
@@ -527,6 +565,32 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
                 onPressed: () => OpenFilex.open(_result!.path),
                 icon: const Icon(Icons.open_in_new),
                 label: const Text('فتح الملف المستلم'),
+              ),
+          ],
+          if (_active && _pairing?.verificationCode != null) ...[
+            const SizedBox(height: 12),
+            const Text('قارن البصمة على الهاتفين. ألغِ العملية إذا اختلفت.'),
+            SelectableText(_pairing!.verificationCode!,
+              textDirection: TextDirection.ltr,
+              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+            if (!_identityConfirmed)
+              FilledButton.icon(
+                onPressed: _sendMode && !_senderReady ? null : () {
+                  setState(() => _identityConfirmed = true);
+                  if (_sendMode) {
+                    setState(() => _senderReady = false);
+                    unawaited(_startSend());
+                  } else {
+                    // The sender repeats its reply until this authenticated
+                    // ready token arrives; a lost ready is retried normally.
+                    final reply = _acceptedReply;
+                    if (reply != null) unawaited(_acceptAcousticReply(reply));
+                  }
+                },
+                icon: const Icon(Icons.verified_user),
+                label: Text(_sendMode && !_senderReady
+                    ? 'بانتظار تأكيد المستقبل'
+                    : 'البصمتان متطابقتان • متابعة'),
               ),
           ],
           const SizedBox(height: 16),

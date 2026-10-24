@@ -15,3 +15,10 @@ This branch was copied from the source-preservation checkpoint on main. It must 
 This is not a completed file-sharing app. Physical two-phone transfers, channel UIs, Android runtime permission behavior, actual microphone/camera tests, restored icon files, and security review are still pending. A green APK build demonstrates compilability, not channel functionality. Upstream license notices remain applicable.
 
 The base Android files generated in CI should be committed explicitly once the build passes, to avoid depending on generation forever.
+
+## Superseded branch instruction — 2026-10-24
+
+The owner explicitly moved active development to `main`. The history through
+c3de76f was fast-forwarded to main; recovery-dev remains unchanged. Current status
+is in the root README, DEVELOPMENT and TESTING documents, not the old milestone
+notes above.

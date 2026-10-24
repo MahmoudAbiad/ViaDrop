@@ -48,7 +48,7 @@ class PhysicalEngine extends TransferEngine {
  @override Stream<Peer> discover()=>const Stream.empty();
  @override Future<void> receive()async{await startListening?.call();}
  @override Future<void> send(File sealed,Peer? peer,CancelToken token,void Function(int,int) progress)async{
-  _token=token;if(await sealed.length()>capabilities.maxBytes+16384)throw StateError('Size limit exceeded');
+  _token=token;token.check();if(await sealed.length()>capabilities.maxBytes)throw StateError('Size limit exceeded');
   final payload=await sealed.readAsBytes();final id=sessionId??(ByteData.sublistView(Vault.random(4)).getUint32(0)|1);final length=channel==Channel.audio?100:blockLength;
   final enc=LTEncoder(payload:payload,blockLength:length,sessionId:id);final checksum=crc32(payload);var seq=0;
   while(!token.cancelled){

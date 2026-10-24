@@ -2,46 +2,46 @@
 
 **Share beyond connections. — شاركها بأي طريقة.**
 
-Android-first Flutter/Dart app with Kotlin native transports. Proprietary code;
-public repository visibility was explicitly authorized by the owner on 2026-10-24.
-Public visibility does not grant an open-source license. Third-party components
-retain their respective licenses (see LICENSE and assets/licenses).
+Experimental Android Flutter/Dart application with Kotlin and native ggwave audio.
+The owner authorized public repository visibility; ViaDrop remains proprietary.
+Third-party components retain their respective licenses.
 
-## Current checkpoint — NOT a release
+## Active development
 
-This commit preserves the recovered development work before further development.
-It is **not currently a complete buildable Flutter app**: the UI entry point,
-Android Gradle project configuration, tests and CI still need to be restored.
-No APK is available from this checkpoint.
+`main` is the active branch (owner instruction, 2026-10-24). It contains the
+complete history previously developed on `recovery-dev`; that branch is retained
+unchanged. This is an internal test application, not a production release.
 
-Implemented source currently saved:
-- Common transport contracts, capabilities, session state and local history manager.
-- Streaming VDP1 encrypted file envelope: AES-256-GCM, PBKDF2-HMAC-SHA256,
-  per-record authenticated indexes, final SHA-256 verification and safe filenames.
-- LAN discovery and encrypted HTTP transfer with receiver consent and single-use
-  tickets bound to sender address and offered size.
-- QR/audio fountain packet engine with duplicate/loss handling and CRC checks.
-- Kotlin Bluetooth Classic RFCOMM transfer for paired devices, consent and final ACK.
-- ggwave JNI encoding/decoding with Android speaker/microphone integration.
-- Android incoming share-intent importer.
-- Bundled Cairo/Manrope fonts and third-party notices.
+Implemented paths:
+- Wi-Fi LAN discovery, consent and streaming encrypted HTTP file transfer.
+- Bluetooth Classic RFCOMM between paired devices, consent and acknowledgement.
+- Camera-only animated Base45 QR frames, fountain reconstruction and two-scan
+  ephemeral X25519 pairing; no radio fallback.
+- Speaker-to-microphone ggwave packets and acoustic X25519 pairing; no radio fallback.
+- AES-GCM file envelopes, SHA-256 verification, safe output filenames and history.
+- Optical/acoustic peer fingerprint comparison before file transfer, without
+  typing a password. Compare the entire code on both devices; cancel on mismatch.
 
-## Validation status
+Current physical-channel limits: QR 512 KiB encrypted; audio 48 KiB input and
+64 KiB encrypted. High-frequency audio and fast QR are experimental. Neither
+physical channel has a receiver-completion acknowledgement; stop the repeating
+broadcast after verifying success on the receiving phone.
 
-A previous transient workspace passed 13 Dart tests and audible/high-frequency
-PCM loopback simulations. That workspace was removed by maintenance. The present
-recovered and modified sources have **not yet been revalidated**; those historical
-results are not acceptance evidence for this commit. No physical two-phone tests
-have been performed. No production-readiness or E2E-security claim is made.
+## Build and validation
 
-## Next work
+GitHub Actions on `main` runs tests, static analysis and APK builds:
+- Android 6+ ARM32: Flutter 3.32.8 with a legacy dependency profile.
+- Android 7+ ARM64: Flutter 3.47.8 with the modern dependency profile.
 
-1. Restore the app UI, brand assets, Android configuration and automated tests.
-2. Analyze, test and build a debug APK; add CI and complete dependency audit.
-3. Test all four channels between physical Android devices, with airplane-mode
-   QR/audio tests and integrity/memory/disconnection checks.
-4. Improve pairing/discovery, estimates, lifecycle handling and configurable save
-   destinations. Persistent cross-restart resume and Wi-Fi Direct are not supported.
+Download APK artifacts from successful [Actions runs](https://github.com/MahmoudAbiad/ViaDrop/actions).
+Release-mode APKs use internal test signing, **not production signing**.
+Scaffold generation is still performed in CI; dependency locking and a committed
+Android scaffold remain release work. See [DEVELOPMENT.md](DEVELOPMENT.md).
 
-No backend, cloud upload service, analytics endpoint, signing key or API secret is
-part of this source checkpoint. Development must remain confined to this repository.
+The previous baseline `c3de76f` passed both APK workflows. New commits must pass
+their own checks. No physical two-phone result is claimed. See
+[TESTING.md](TESTING.md) for the simulation/device distinction and test matrix.
+
+Brand assets, full bilingual UX, background lifecycle handling, persistent resume,
+complete dependency/license auditing and physical reliability testing are still
+unfinished. Wi-Fi Direct is not implemented. No backend or account is required.

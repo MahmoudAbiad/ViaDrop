@@ -43,12 +43,13 @@ class _QrTransferPageState extends State<QrTransferPage> {
   bool _finalizing = false;
   bool _fastMode = false;
   bool _scanBusy = false;
+  bool _confirmSend = false;
   String? _frame;
   String _message = 'الإرسال عبر الشاشة والكاميرا بدون إنترنت أو كلمة مرور.';
   double _progress = 0;
 
   bool get _active => _busy || _showInvite || _scanReply || _scanInvite ||
-      _showReply || _scanData || _sending || _finalizing;
+      _showReply || _scanData || _sending || _finalizing || _confirmSend;
 
   @override
   void initState() {
@@ -240,8 +241,11 @@ class _QrTransferPageState extends State<QrTransferPage> {
         for (final value in values) {
           if (!value.startsWith(OpticalPairing.replyPrefix)) continue;
           if (await pair.acceptReply(value) && mounted && _scanReply) {
-            setState(() => _scanReply = false);
-            unawaited(_transmit());
+            setState(() {
+              _scanReply = false;
+              _confirmSend = true;
+              _message = 'قارن بصمة الاقتران على الهاتفين قبل إرسال الملف.';
+            });
             return;
           }
         }
@@ -301,6 +305,7 @@ class _QrTransferPageState extends State<QrTransferPage> {
   void _stop() {
     _sendToken?.cancelled = true;
     setState(() {
+      _confirmSend = false;
       _showInvite = false;
       _scanReply = false;
       _scanInvite = false;
@@ -411,7 +416,7 @@ class _QrTransferPageState extends State<QrTransferPage> {
               FilledButton.icon(
                 onPressed: _beginDataScan,
                 icon: const Icon(Icons.camera_alt),
-                label: const Text('تم التأكيد • ابدأ استقبال الملف'),
+                label: const Text('البصمتان متطابقتان • استقبل الملف'),
               ),
             ],
             if (_scanData) ...[
@@ -427,6 +432,21 @@ class _QrTransferPageState extends State<QrTransferPage> {
                 label: const Text('فتح الملف المستلم'),
               ),
           ],
+          if ((_showReply || _confirmSend) && _pairing?.verificationCode != null) ...[
+            const Text('قارن هذه البصمة على الهاتفين. ألغِ العملية إذا اختلفت.'),
+            SelectableText(_pairing!.verificationCode!,
+              textDirection: TextDirection.ltr,
+              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+          ],
+          if (_confirmSend)
+            FilledButton.icon(
+              onPressed: () {
+                setState(() => _confirmSend = false);
+                unawaited(_transmit());
+              },
+              icon: const Icon(Icons.verified_user),
+              label: const Text('البصمتان متطابقتان • أرسل الملف'),
+            ),
           if (_active) ...[
             const SizedBox(height: 12),
             OutlinedButton.icon(
@@ -442,7 +462,7 @@ class _QrTransferPageState extends State<QrTransferPage> {
           )),
           const SizedBox(height: 8),
           const Text(
-            'يبدأ بث الملف بعد أن يمسح المرسل رمز التأكيد من المستقبل. '
+            'يبدأ بث الملف بعد مسح رمز الرد ومقارنة البصمة على الهاتفين. '
             'المفتاح يُشتق تلقائياً ولا يظهر على الشاشة. '
             'السرعة الفعلية تعتمد على وضوح الشاشة والكاميرا.',
             style: TextStyle(fontSize: 12),

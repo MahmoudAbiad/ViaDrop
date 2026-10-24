@@ -23,8 +23,20 @@ class OpticalPairing {
   final List<int> _localPublic;
   final bool _sender;
   String? _secret;
+  bool _deriving = false;
 
   String? get passphrase => _secret;
+
+  /// Compare on both screens before accepting. This is a fingerprint, not
+  /// a password or a substitute for checking the intended peer in person.
+  String? get verificationCode {
+    final secret = _secret;
+    if (secret == null) return null;
+    final digest = hashes.sha256.convert(
+      utf8.encode('ViaDrop peer verification v1:$secret'),
+    ).toString().substring(0, 12).toUpperCase();
+    return '${digest.substring(0, 4)} ${digest.substring(4, 8)} ${digest.substring(8)}';
+  }
 
   static Future<OpticalPairing> createSender() async {
     final id = ByteData.sublistView(Vault.random(4)).getUint32(0) | 1;
@@ -62,14 +74,17 @@ class OpticalPairing {
   }
 
   Future<bool> acceptReply(String raw) async {
-    if (!_sender || _secret != null) return false;
+    if (!_sender || _secret != null || _deriving) return false;
     final parsed = _parse(raw, replyPrefix);
     if (parsed == null || parsed.$1 != sessionId) return false;
+    _deriving = true;
     try {
       await _derive(parsed.$2);
       return true;
     } on Exception {
       return false;
+    } finally {
+      _deriving = false;
     }
   }
 
@@ -79,6 +94,10 @@ class OpticalPairing {
       keyPair: _keyPair, remotePublicKey: peer,
     );
     final secretBytes = await shared.extractBytes();
+    // RFC 7748 section 6.1: reject a non-contributory shared secret.
+    var nonzero = 0;
+    for (final byte in secretBytes) { nonzero |= byte; }
+    if (nonzero == 0) throw const FormatException('Invalid peer key');
     final idBytes = (ByteData(4)..setUint32(0, sessionId)).buffer.asUint8List();
     final senderBytes = _sender ? _localPublic : peerBytes;
     final receiverBytes = _sender ? peerBytes : _localPublic;

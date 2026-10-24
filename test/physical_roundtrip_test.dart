@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:viadrop/core/qr_pairing.dart';
 import 'package:viadrop/core/acoustic_pairing.dart';
+import 'package:viadrop/core/audio_estimate.dart';
 import 'package:viadrop/core/transfer.dart';
 import 'package:viadrop/core/vault.dart';
 import 'package:viadrop/engines/physical.dart';
@@ -13,6 +14,13 @@ import 'package:viadrop/third_party/onesend/fountain.dart';
 import 'package:viadrop/third_party/onesend/protocol.dart';
 
 void main() {
+  test('audio estimate includes envelope overhead and realistic large-file time', () {
+    expect(AudioEstimate.forInputBytes(0).lowerMinutes, greaterThan(0));
+    final large = AudioEstimate.forInputBytes(48 * 1024);
+    expect(large.lowerMinutes, greaterThan(60));
+    expect(large.upperMinutes, greaterThan(large.lowerMinutes));
+    expect(() => AudioEstimate.forInputBytes(-1), throwsArgumentError);
+  });
   test('QR fountain transport restores complete bytes despite lost frames', () {
     final payload = Uint8List.fromList(
       List<int>.generate(931, (index) => (index * 17 + 9) % 256),
@@ -237,6 +245,43 @@ void main() {
     expect(sender.passphrase, isNotNull);
     expect(sender.passphrase, receiver.passphrase);
     expect(sender.passphrase!.length, greaterThan(12));
+  });
+
+  test('pairing fingerprints match only the same completed exchange', () async {
+    final a = await OpticalPairing.createSender();
+    expect(a.verificationCode, isNull);
+    final b = (await OpticalPairing.acceptInvitation(a.invitation))!;
+    await a.acceptReply(b.reply);
+    expect(a.verificationCode, b.verificationCode);
+    expect(a.verificationCode, matches(RegExp(r'^[0-9A-F]{4} [0-9A-F]{4} [0-9A-F]{4}$')));
+    // A different peer answering the same invitation must not get the same code.
+    final other = (await OpticalPairing.acceptInvitation(a.invitation))!;
+    expect(other.verificationCode, isNot(a.verificationCode));
+    expect(await a.acceptReply(other.reply), isFalse);
+    expect(a.verificationCode, b.verificationCode);
+  });
+
+  test('concurrent replies cannot overwrite the established pairing', () async {
+    final a = await OpticalPairing.createSender();
+    final b = (await OpticalPairing.acceptInvitation(a.invitation))!;
+    final c = (await OpticalPairing.acceptInvitation(a.invitation))!;
+    final results = await Future.wait([a.acceptReply(b.reply), a.acceptReply(c.reply)]);
+    expect(results, [true, false]);
+    expect(a.passphrase, b.passphrase);
+  });
+
+  test('low order X25519 public keys never establish a shared secret', () async {
+    for (final first in [0, 1]) {
+      final bytes = List<int>.filled(32, 0)..[0] = first;
+      final key = base64UrlEncode(bytes);
+      expect(await OpticalPairing.acceptInvitation('VDPAIR1:00000001:$key'), isNull);
+      final a = await OpticalPairing.createSender();
+      final id = a.sessionId.toRadixString(16).padLeft(8, '0');
+      expect(await a.acceptReply('VDREPLY1:$id:$key'), isFalse);
+      expect(a.passphrase, isNull);
+      final b = (await OpticalPairing.acceptInvitation(a.invitation))!;
+      expect(await a.acceptReply(b.reply), isTrue);
+    }
   });
 
   test('Base45 QR frames survive arbitrary bytes and reject malformed data', () {

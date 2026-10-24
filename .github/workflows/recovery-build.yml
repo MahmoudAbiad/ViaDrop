@@ -1,22 +1,27 @@
 name: ViaDrop V1 Modern ARM64 Release
 on:
   push:
-    branches: [recovery-dev]
+    branches: [main]
   workflow_dispatch:
 jobs:
   arm64-release-apk:
     runs-on: ubuntu-latest
     timeout-minutes: 50
     steps:
-      - name: Checkout development branch
+      - name: Checkout main
         uses: actions/checkout@v4
+      - name: Simulate acoustic PCM round trips
+        run: |
+          g++ -std=c++17 -O2 -Iandroid/app/src/main/cpp/include test/native/audio_loopback.cpp android/app/src/main/cpp/ggwave-src/ggwave.cpp -o /tmp/viadrop-audio-test
+          /tmp/viadrop-audio-test
       - name: Install Flutter
         uses: subosito/flutter-action@v2
         with:
+          flutter-version: '3.47.8'
           channel: stable
           cache: true
       - name: Recreate missing Android scaffold
-        run: flutter create --platforms=android --org app.viadrop --project-name viadrop .
+        run: flutter create --no-pub --platforms=android --org app.viadrop --project-name viadrop .
       - name: Enable native audio and required platform permissions
         run: |
           python3 - <<'PY'
