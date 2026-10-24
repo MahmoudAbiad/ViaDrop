@@ -11,6 +11,9 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../core/manager.dart';
 import '../core/one_way_session.dart';
+import '../core/physical_profiles.dart';
+import '../engines/native.dart';
+import '../widgets/physical_profile_selector.dart';
 import '../core/transfer.dart';
 import '../engines/physical.dart';
 import '../engines/qr_codec.dart';
@@ -39,7 +42,9 @@ class _QrTransferPageState extends State<QrTransferPage> {
   bool _scanData = false;
   bool _sending = false;
   bool _finalizing = false;
-  bool _fastMode = false;
+  PhysicalCapabilities _capabilities = const PhysicalCapabilities.unavailable();
+  String? _profileId;
+  bool _probing = true;
   bool _scanBusy = false;
   int _countdown = 0;
   String? _frame;
@@ -52,12 +57,41 @@ class _QrTransferPageState extends State<QrTransferPage> {
   @override
   void initState() {
     super.initState();
+    unawaited(_probeCapabilities());
     _manager.initialize().then((_) {
       if (mounted) setState(() => _ready = true);
     }).catchError((Object e) {
       if (mounted) setState(() => _message = 'فشل التهيئة: $e');
     });
   }
+
+  Future<void> _probeCapabilities() async {
+    if (mounted) setState(() => _probing = true);
+    PhysicalCapabilities result;
+    try {
+      result = PhysicalCapabilities.fromMap(
+        await NativeBridge.probePhysicalCapabilities(),
+      );
+    } catch (_) {
+      result = const PhysicalCapabilities.unavailable();
+    }
+    if (!mounted) return;
+    setState(() {
+      _capabilities = result;
+      final current = _profileId == null
+          ? null : physicalProfileById(_profileId!);
+      if (current == null || !result.availability(current).enabled) {
+        _profileId = result.recommended(PhysicalMedium.qr)?.id;
+      }
+      _probing = false;
+    });
+  }
+
+  PhysicalProfile? get _profile =>
+      _profileId == null ? null : physicalProfileById(_profileId!);
+
+  bool get _profileSupported =>
+      _profile != null && _capabilities.availability(_profile!).enabled;
 
   @override
   void dispose() {
@@ -84,7 +118,7 @@ class _QrTransferPageState extends State<QrTransferPage> {
   }
 
   Future<void> _beginSend() async {
-    if (!_ready || _active || _selected == null) return;
+    if (!_ready || _active || _selected == null || !_profileSupported) return;
     setState(() => _busy = true);
     try {
       await WakelockPlus.enable();
@@ -93,7 +127,7 @@ class _QrTransferPageState extends State<QrTransferPage> {
         return;
       }
       setState(() {
-        _session = OneWaySession.create();
+        _session = OneWaySession.create(profileId: _profileId!);
         _received = null;
         _showInvite = true;
         _message = 'امسح الرمز الثابت بالجهاز المستقبل، ثم اضغط بدء النقل.';
@@ -107,7 +141,7 @@ class _QrTransferPageState extends State<QrTransferPage> {
   }
 
   Future<void> _beginReceive() async {
-    if (!_ready || _active) return;
+    if (!_ready || _active || !_profileSupported) return;
     setState(() => _busy = true);
     try {
       await WakelockPlus.enable();
@@ -170,8 +204,8 @@ class _QrTransferPageState extends State<QrTransferPage> {
             setState(() => _frame = encodeQrFrame(packet));
           }
         },
-      )..fps = _fastMode ? 7 : 5
-       ..blockLength = _fastMode ? 320 : 280;
+      )..fps = physicalProfileById(session.profileId)!.qrFps
+       ..blockLength = physicalProfileById(session.profileId)!.qrBlockBytes;
       await engine.send(encrypted, null, token, (_, __) {});
     } on TransferCancelled {
       if (mounted) setState(() => _message = 'تم إيقاف البث.');
@@ -200,6 +234,14 @@ class _QrTransferPageState extends State<QrTransferPage> {
         for (final value in values) {
           final session = OneWaySession.parse(value);
           if (session == null || !mounted || !_scanInvite) continue;
+          final receivedProfile = physicalProfileById(session.profileId);
+          if (receivedProfile?.medium != PhysicalMedium.qr ||
+              session.profileId != _profileId || !_profileSupported) {
+            if (mounted) setState(() => _message =
+                'الوضع على المرسل: ${receivedProfile?.title ?? session.profileId}. '
+                'اختر الوضع نفسه من القائمة على هذا الهاتف ثم امسح مرة أخرى.');
+            return;
+          }
           _manager.begin();
           _manager.update(Phase.waiting);
           _decoder = PhysicalDecoder(
@@ -323,22 +365,28 @@ class _QrTransferPageState extends State<QrTransferPage> {
             onSelected: _active ? null : (_) => setState(() => _sendMode = false)),
         ]),
         const SizedBox(height: 12),
+        PhysicalProfileSelector(
+          medium: PhysicalMedium.qr,
+          capabilities: _capabilities,
+          selectedId: _profileId,
+          enabled: !_sending && !_busy && !_showInvite && !_scanData && !_finalizing,
+          checking: _probing,
+          onRefresh: () => unawaited(_probeCapabilities()),
+          onChanged: (id) => setState(() {
+            _profileId = id;
+            _message = 'اختر التقنية نفسها على الجهاز الثاني قبل بدء النقل.';
+          }),
+        ),
+        const SizedBox(height: 12),
         if (_sendMode) ...[
           OutlinedButton.icon(
             onPressed: _active ? null : _pick,
             icon: const Icon(Icons.attach_file),
             label: Text(_selected?.uri.pathSegments.last ?? 'اختر الملف'),
           ),
-          if (!_active)
-            SwitchListTile(
-              title: const Text('QR سريع (تجريبي)'),
-              subtitle: const Text('الكاميرات القديمة قد تفقد إطارات أكثر.'),
-              value: _fastMode,
-              onChanged: (v) => setState(() => _fastMode = v),
-            ),
-          if (!_active)
+           if (!_active)
             FilledButton.icon(
-              onPressed: _ready && _selected != null ? _beginSend : null,
+              onPressed: _ready && _selected != null && _profileSupported ? _beginSend : null,
               icon: const Icon(Icons.qr_code),
               label: const Text('عرض QR البداية'),
             ),
@@ -364,7 +412,7 @@ class _QrTransferPageState extends State<QrTransferPage> {
         ] else ...[
           if (!_active)
             FilledButton.icon(
-              onPressed: _ready ? _beginReceive : null,
+              onPressed: _ready && _profileSupported ? _beginReceive : null,
               icon: const Icon(Icons.camera_alt_outlined),
               label: const Text('استقبال بالـQR'),
             ),
