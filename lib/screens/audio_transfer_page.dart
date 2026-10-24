@@ -28,7 +28,7 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
   StreamSubscription<dynamic>? _events;
   File? _source;
   File? _result;
-  PhysicalDecoder _decoder = PhysicalDecoder(4096);
+  PhysicalDecoder _decoder = PhysicalDecoder(64 * 1024);
   CancelToken? _sendToken;
   bool _ready = false;
   bool _receiving = false;
@@ -99,27 +99,35 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
     try {
       final input = await _inputFile();
       if (input == null) throw StateError('اختر ملفاً أو اكتب نصاً');
-      // The acoustic channel is deliberately restricted to tiny envelopes.
-      if (await input.length() > 2000) {
-        throw StateError('الملف أكبر من حد الصوت التجريبي (2KB).');
+      // The acoustic modem is low-bandwidth. A larger experimental cap
+      // enables short notes/documents; it does not make large files fast.
+      if (await input.length() > 48 * 1024) {
+        throw StateError('حجم الملف يتجاوز الحد التجريبي للصوت (48KB).');
       }
       _manager.begin();
       encrypted = await _manager.prepare(input, _pass.text);
       if (token.cancelled) return;
-      if (await encrypted.length() > 4096) {
-        throw StateError('حجم البيانات بعد التشفير أكبر من حد الصوت (4KB).');
+      if (await encrypted.length() > 64 * 1024) {
+        throw StateError('حجم البيانات بعد التشفير أكبر من حد الصوت (64KB).');
       }
       await WakelockPlus.enable();
       wakeLockActive = true;
       _manager.update(Phase.transferring);
-      _show('يُرسل الصوت الآن. احتفظ بالهاتفين قريبين ولا تخفض مستوى الصوت.');
+      _show('جارٍ الإرسال الصوتي. قد يستغرق نقل ملف كبير عدة دقائق. '
+          'اترك الهاتفين متقاربين وانتظر اكتمال الاستقبال.');
       final engine = PhysicalEngine(
         Channel.audio,
         emit: (Uint8List packet) => NativeBridge.play(packet, _highFrequency),
         stopListening: NativeBridge.stopAudio,
       );
       await engine.send(encrypted, null, token, (sent, total) {
-        if (mounted) setState(() => _progress = (sent / total).clamp(0, 1));
+        if (mounted) {
+          setState(() {
+            // Frames repeat until the sender stops. A full round does not
+            // mean the receiver has reconstructed and verified the file.
+            _progress = ((sent % total) / total).clamp(0, 1);
+          });
+        }
       });
     } on TransferCancelled {
       _show('أوقفتَ البث. لا يوجد تأكيد تلقائي بأن الهاتف الآخر أكمل الاستقبال.');
@@ -154,7 +162,7 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
     // asynchronous Android microphone permission prompt.
     setState(() => _listenStarting = true);
     try {
-      _decoder = PhysicalDecoder(4096);
+      _decoder = PhysicalDecoder(64 * 1024);
       _manager.begin();
       _manager.update(Phase.waiting);
       _events = NativeBridge.events.listen(
@@ -381,8 +389,10 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
           )),
           const SizedBox(height: 8),
           const Text(
-            'تجريبي: نقل الصوت بطيء جداً. يتطلب اختباراً على هاتفين حقيقيين. '
-            'لا تشارك كلمة المرور في قناة الصوت.',
+            'تجريبي: يدعم الصوت الآن ملفات حتى 48KB قبل التشفير. '
+            'الملفات الأكبر قد تستغرق وقتاً طويلاً جداً، '
+            'ومؤشر المرسل يوضح دورة الإطارات وليس نجاح الاستلام. '
+            'الاقتران الصوتي بدون كلمة مرور ما زال قيد التطوير.',
             style: TextStyle(fontSize: 12),
           ),
         ],
