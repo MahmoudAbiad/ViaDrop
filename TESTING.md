@@ -12,6 +12,11 @@
 - `physical_profiles_test.dart`: implemented/disabled profile checks, probe
   failures, automatic local recommendation, and VDS3 mode agreement.
 - `physical_profile_selector_test.dart`: disabled dropdown entries.
+- `qr_profile_capacity_test.dart`: QR v13/v17 encoded fountain frames fit.
+- `physical_receive_metrics_test.dart`: goodput and frame counters.
+- Actual RX payload goodput and accepted/rejected frame counts are displayed
+  after a verified transfer. They do not include initial pairing or decryption
+  time, and do not reveal missing over-the-air frames.
 - Physical device probe and transport settings require on-device tests; CI
   simulation does not establish real cross-device codec performance.
 - `lan_integration_test.dart`: local host HTTP consent/streaming/error scenarios.
