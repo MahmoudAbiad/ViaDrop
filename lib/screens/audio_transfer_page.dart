@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -7,6 +8,8 @@ import 'package:flutter/material.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+import '../core/acoustic_pairing.dart';
+import '../core/qr_pairing.dart';
 import '../core/manager.dart';
 import '../core/transfer.dart';
 import '../engines/native.dart';
@@ -23,9 +26,15 @@ class AudioTransferPage extends StatefulWidget {
 
 class _AudioTransferPageState extends State<AudioTransferPage> {
   final _manager = TransferManager();
-  final _pass = TextEditingController();
   final _text = TextEditingController();
   StreamSubscription<dynamic>? _events;
+  OpticalPairing? _pairing;
+  Future<void>? _beaconTask;
+  Future<void>? _replyTask;
+  bool _pairingSender = false;
+  bool _pairingReceiver = false;
+  bool _answerBusy = false;
+  String? _acceptedReply;
   File? _source;
   File? _result;
   PhysicalDecoder _decoder = PhysicalDecoder(64 * 1024);
@@ -57,8 +66,7 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
   }
 
   bool get _active =>
-      _receiving || _listenStarting || _listenStopping || _sending || _finalizing;
-  bool get _validPass => _pass.text.length >= 12;
+      _receiving || _pairingSender || _listenStarting || _listenStopping || _sending || _finalizing;
 
   Future<void> _pick() async {
     try {
@@ -83,8 +91,8 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
   }
 
   Future<void> _startSend() async {
-    if (!_ready || _active || !_validPass) {
-      _show('أدخل عبارة مرور مشتركة من 12 حرفاً على الأقل.');
+    if (!_ready || _sending || _pairing?.passphrase == null) {
+      _show('لم يكتمل الاقتران الصوتي.');
       return;
     }
     File? encrypted;
@@ -105,7 +113,7 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
         throw StateError('حجم الملف يتجاوز الحد التجريبي للصوت (48KB).');
       }
       _manager.begin();
-      encrypted = await _manager.prepare(input, _pass.text);
+      encrypted = await _manager.prepare(input, _pairing!.passphrase!);
       if (token.cancelled) return;
       if (await encrypted.length() > 64 * 1024) {
         throw StateError('حجم البيانات بعد التشفير أكبر من حد الصوت (64KB).');
@@ -117,6 +125,7 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
           'اترك الهاتفين متقاربين وانتظر اكتمال الاستقبال.');
       final engine = PhysicalEngine(
         Channel.audio,
+        sessionId: _pairing!.sessionId,
         emit: (Uint8List packet) => NativeBridge.play(packet, _highFrequency),
         stopListening: NativeBridge.stopAudio,
       );
@@ -145,6 +154,11 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
   }
 
   Future<void> _stopSend() async {
+    if (_pairingSender && !_sending) {
+      await _stopReceive();
+      _show('تم إلغاء الاقتران الصوتي.');
+      return;
+    }
     _sendToken?.cancelled = true;
     try {
       await NativeBridge.stopAudio();
@@ -153,15 +167,135 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
     }
   }
 
+  Future<void> _beginAudioSendPairing() async {
+    if (!_ready || _active) return;
+    setState(() => _listenStarting = true);
+    try {
+      if (_text.text.trim().isEmpty && _source == null) {
+        throw StateError('اكتب نصاً أو اختر ملفاً أولاً');
+      }
+      await WakelockPlus.enable();
+      _pairing = null;
+      _events = NativeBridge.events.listen(
+        _handleEvent,
+        onError: (Object error) =>
+            unawaited(_failReceive('خطأ في الاقتران الصوتي: $error')),
+      );
+      await NativeBridge.listen();
+      if (!mounted) {
+        await NativeBridge.stopAudio();
+        return;
+      }
+      setState(() {
+        _pairingSender = true;
+        _status = 'ننتظر إشارة الاقتران من الجهاز المستقبل. '
+            'اضغط استقبال على الجهاز الثاني، وقرب الهاتفين.';
+      });
+    } catch (error) {
+      await _stopReceive();
+      _show('فشل الاقتران الصوتي: $error');
+    } finally {
+      if (mounted) setState(() => _listenStarting = false);
+    }
+  }
+
+  Future<void> _beaconLoop(OpticalPairing pairing) async {
+    final bytes = Uint8List.fromList(utf8.encode(pairing.invitation));
+    while (_receiving && _pairingReceiver && pairing.passphrase == null) {
+      try {
+        // Only short, audible pairing beacons. High-frequency mode is never
+        // used for discovery, to support older phone microphones.
+        await NativeBridge.play(bytes, false);
+        await Future<void>.delayed(const Duration(milliseconds: 700));
+      } catch (error) {
+        if (_receiving && _pairingReceiver) {
+          unawaited(_failReceive('فشل إرسال الاقتران: $error'));
+        }
+        return;
+      }
+    }
+  }
+
+  Future<void> _replyLoop(OpticalPairing pairing) async {
+    final bytes = Uint8List.fromList(utf8.encode(pairing.reply));
+    while (_pairingSender && mounted) {
+      try {
+        await NativeBridge.play(bytes, false);
+        await Future<void>.delayed(const Duration(milliseconds: 700));
+      } catch (error) {
+        if (_pairingSender) unawaited(_failReceive('فشل تأكيد الاقتران: $error'));
+        return;
+      }
+    }
+  }
+
+  Future<void> _receiveInvitation(String invitation) async {
+    if (!_pairingSender || _pairing != null) return;
+    // Reserve the current attempt before awaiting X25519 key creation.
+    final pairing = await OpticalPairing.acceptInvitation(invitation);
+    if (pairing == null || !_pairingSender || !mounted || _pairing != null) return;
+    _pairing = pairing;
+    _show('وصل الاقتران. يجري تأكيد المفتاح عبر الصوت...');
+    _replyTask = _replyLoop(pairing);
+  }
+
+  Future<void> _finishSenderPairing(String ready) async {
+    final pair = _pairing;
+    if (!_pairingSender || pair?.passphrase == null ||
+        !AcousticReady.verify(pair!, ready)) return;
+    _pairingSender = false;
+    await _replyTask;
+    try {
+      await NativeBridge.stopAudio();
+      await _events?.cancel();
+      _events = null;
+    } catch (_) {}
+    if (mounted) {
+      _show('تم اقتران الهاتفين صوتياً. يبدأ الآن بث الملف المشفّر.');
+      unawaited(_startSend());
+    }
+  }
+
+  Future<void> _acceptAcousticReply(String response) async {
+    final pair = _pairing;
+    if (!_pairingReceiver || pair == null || _answerBusy) return;
+    if (_acceptedReply != null && _acceptedReply != response) return;
+    _answerBusy = true;
+    try {
+      if (_acceptedReply == null) {
+        if (!await pair.acceptReply(response)) return;
+        _acceptedReply = response;
+        await _beaconTask;
+        if (!_receiving || !mounted) return;
+        _decoder = PhysicalDecoder(
+          64 * 1024, expectedSessionId: pair.sessionId,
+        );
+      }
+      await NativeBridge.play(
+        Uint8List.fromList(utf8.encode(AcousticReady.token(pair))), false,
+      );
+      if (mounted && _receiving) {
+        _show('تم إنشاء اتصال صوتي مشفّر تلقائياً. ننتظر الملف...');
+      }
+    } catch (error) {
+      if (_receiving) _show('تعذّر تأكيد الاقتران: $error');
+    } finally {
+      _answerBusy = false;
+    }
+  }
+
   Future<void> _startReceive() async {
-    if (!_ready || _active || !_validPass) {
-      _show('اكتب نفس عبارة المرور على الجهازين قبل الاستقبال.');
+    if (!_ready || _active) {
+      _show('الجهاز مشغول بجلسة صوتية أخرى.');
       return;
     }
     // Guard immediately, before waiting for the screen-lock plugin or the
     // asynchronous Android microphone permission prompt.
     setState(() => _listenStarting = true);
     try {
+      _pairing = await OpticalPairing.createSender();
+      _acceptedReply = null;
+      _answerBusy = false;
       _decoder = PhysicalDecoder(64 * 1024);
       _manager.begin();
       _manager.update(Phase.waiting);
@@ -179,9 +313,10 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
       }
       setState(() {
         _receiving = true;
+        _pairingReceiver = true;
         _progress = 0;
         _result = null;
-        _status = 'جارٍ تشغيل الميكروفون...';
+        _status = 'جارٍ تشغيل الاقتران الصوتي...';
       });
       await NativeBridge.listen();
       // Stop can be pressed while permission_handler is still waiting for
@@ -190,7 +325,8 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
       if (!mounted || !_receiving) {
         await NativeBridge.stopAudio();
       } else {
-        _show('يستمع الميكروفون الآن للإشارات الصوتية. قرّب الجهازين.');
+        _show('يرسل المستقبل إشارة اقتران قصيرة. اضغط إرسال في الجهاز الثاني.');
+        _beaconTask = _beaconLoop(_pairing!);
       }
     } catch (error) {
       await _stopReceive();
@@ -201,33 +337,53 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
   }
 
   void _handleEvent(dynamic data) {
-    if (!_receiving || _finalizing || data is! Map) return;
+    if ((!_receiving && !_pairingSender) || _finalizing || data is! Map) return;
     if (data['type'] == 'error') {
-      unawaited(_failReceive('المودم الصوتي: ${data['message'] ?? 'خطأ'}'));
+      unawaited(_failReceive(
+        'المودم الصوتي: ' + (data['message'] ?? 'خطأ').toString(),
+      ));
       return;
     }
     if (data['type'] != 'audioData') return;
     final raw = data['data'];
     if (raw is! List<int>) return;
+    final bytes = Uint8List.fromList(raw);
+
+    if (_pairingSender) {
+      final text = utf8.decode(bytes, allowMalformed: true);
+      if (text.startsWith(OpticalPairing.invitePrefix)) {
+        unawaited(_receiveInvitation(text));
+      } else if (text.startsWith(AcousticReady.prefix)) {
+        unawaited(_finishSenderPairing(text));
+      }
+      return;
+    }
+
+    if (_pairingReceiver) {
+      final text = utf8.decode(bytes, allowMalformed: true);
+      if (text.startsWith(OpticalPairing.replyPrefix)) {
+        unawaited(_acceptAcousticReply(text));
+        return;
+      }
+      if (_pairing?.passphrase == null) return;
+    }
+
     try {
-      final complete = _decoder.add(Uint8List.fromList(raw));
+      final complete = _decoder.add(bytes);
       if (complete == null) {
-        if (mounted) setState(() => _progress = _decoder.progress.clamp(0, 1));
+        if (mounted) setState(
+          () => _progress = _decoder.progress.clamp(0, 1),
+        );
         return;
       }
       _finalizing = true;
       unawaited(_finishReceive(complete));
     } catch (error) {
       if (_decoder.header == null) {
-        // A completed burst with a bad payload checksum was rejected.
-        // The decoder discarded the corrupted session, so reset the UI as
-        // well while keeping the microphone ready for a fresh transmission.
-        if (mounted) {
-          setState(() {
-            _progress = 0;
-            _status = 'تم تجاهل إرسال صوتي تالف. ما زلنا نستمع لإرسال جديد.';
-          });
-        }
+        if (mounted) setState(() {
+          _progress = 0;
+          _status = 'تم تجاهل إرسال تالف. ما زلنا نستمع لإرسال جديد.';
+        });
       } else {
         _show('إطار صوتي غير صالح: $error');
       }
@@ -235,7 +391,7 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
   }
 
   Future<void> _failReceive(String message) async {
-    if (!_receiving) return;
+    if (!_receiving && !_pairingSender) return;
     await _stopReceive();
     _show(message);
   }
@@ -246,7 +402,7 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
       temp = File(_manager.work.path + '/audio-' +
           DateTime.now().microsecondsSinceEpoch.toString() + '.vdp');
       await temp.writeAsBytes(encryptedData, flush: true);
-      final received = await _manager.accept(temp, _pass.text, Channel.audio);
+      final received = await _manager.accept(temp, _pairing!.passphrase!, Channel.audio);
       if (mounted) setState(() {
         _result = received;
         _progress = 1;
@@ -266,6 +422,8 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
     // stopping guard active until all resources have been released.
     if (_listenStopping) return;
     _listenStopping = true;
+    _pairingSender = false;
+    _pairingReceiver = false;
     if (mounted) setState(() => _receiving = false);
     try {
       try { await NativeBridge.stopAudio(); } catch (_) {}
@@ -281,10 +439,11 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
   @override
   void dispose() {
     _sendToken?.cancelled = true;
+    _pairingSender = false;
+    _pairingReceiver = false;
     _events?.cancel();
     NativeBridge.stopAudio();
     unawaited(WakelockPlus.disable());
-    _pass.dispose();
     _text.dispose();
     _manager.dispose();
     super.dispose();
@@ -312,16 +471,8 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
             ),
           ]),
           const SizedBox(height: 12),
-          TextField(
-            controller: _pass,
-            obscureText: true,
-            enableSuggestions: false,
-            autocorrect: false,
-            enabled: !_active,
-            decoration: const InputDecoration(
-              border: OutlineInputBorder(),
-              labelText: 'عبارة المرور المشتركة (12 حرفاً على الأقل)',
-            ),
+          const Text(
+            'الاقتران آلي بإشارات صوتية قصيرة؛ لا تحتاج إلى رمز تشفير.',
           ),
           const SizedBox(height: 12),
           if (_sendMode) ...[
@@ -346,13 +497,13 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
               value: _highFrequency,
               onChanged: _active ? null : (value) => setState(() => _highFrequency = value),
             ),
-            if (!_sending)
+            if (!_sending && !_pairingSender)
               FilledButton.icon(
-                onPressed: _ready && !_finalizing ? _startSend : null,
+                onPressed: _ready && !_active ? _beginAudioSendPairing : null,
                 icon: const Icon(Icons.volume_up),
-                label: const Text('بدء بث البيانات صوتياً'),
+                label: const Text('إرسال • اقتران صوتي تلقائي'),
               ),
-            if (_sending)
+            if (_sending || _pairingSender)
               FilledButton.tonalIcon(
                 onPressed: _stopSend,
                 icon: const Icon(Icons.stop),
@@ -363,7 +514,7 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
               FilledButton.icon(
                 onPressed: _ready && !_listenStarting ? _startReceive : null,
                 icon: const Icon(Icons.mic),
-                label: const Text('بدء الاستماع'),
+                label: const Text('استقبال • اقتران صوتي تلقائي'),
               ),
             if (_receiving)
               FilledButton.tonalIcon(
@@ -392,7 +543,7 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
             'تجريبي: يدعم الصوت الآن ملفات حتى 48KB قبل التشفير. '
             'الملفات الأكبر قد تستغرق وقتاً طويلاً جداً، '
             'ومؤشر المرسل يوضح دورة الإطارات وليس نجاح الاستلام. '
-            'الاقتران الصوتي بدون كلمة مرور ما زال قيد التطوير.',
+            'الاقتران الصوتي التلقائي تجريبي ويحتاج تجربة على هاتفين.',
             style: TextStyle(fontSize: 12),
           ),
         ],
