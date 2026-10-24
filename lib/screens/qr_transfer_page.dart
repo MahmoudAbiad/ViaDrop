@@ -86,9 +86,10 @@ class _QrTransferPageState extends State<QrTransferPage> {
       _frame = null;
       _message = 'يُجهّز الملف المشفّر...';
     });
+    File? sealed;
     try {
       _manager.begin();
-      final sealed = await _manager.prepare(_selected!, _pass.text);
+      sealed = await _manager.prepare(_selected!, _pass.text);
       if (token.cancelled) return;
       final length = await sealed.length();
       if (length > 512 * 1024) {
@@ -114,6 +115,7 @@ class _QrTransferPageState extends State<QrTransferPage> {
     } catch (e) {
       if (mounted) setState(() => _message = 'تعذّر بدء البث: $e');
     } finally {
+      if (sealed != null && await sealed.exists()) await sealed.delete();
       if (mounted) {
         setState(() {
           _sending = false;
