@@ -1,9 +1,6 @@
-import 'dart:io';
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'core/manager.dart';
-import 'core/transfer.dart';
+
 import 'screens/qr_transfer_page.dart';
 import 'screens/audio_transfer_page.dart';
 
@@ -14,6 +11,7 @@ void main() {
 
 class ViaDropApp extends StatelessWidget {
   const ViaDropApp({super.key});
+
   @override
   Widget build(BuildContext context) => MaterialApp(
     title: 'ViaDrop',
@@ -40,91 +38,17 @@ class ViaDropApp extends StatelessWidget {
       fontFamily: 'Cairo',
     ),
     themeMode: ThemeMode.system,
-    home: const RecoveryHome(),
+    home: const ViaDropHome(),
   );
 }
 
-class RecoveryHome extends StatefulWidget {
-  const RecoveryHome({super.key});
-  @override
-  State<RecoveryHome> createState() => _RecoveryHomeState();
-}
+class ViaDropHome extends StatelessWidget {
+  const ViaDropHome({super.key});
 
-class _RecoveryHomeState extends State<RecoveryHome> {
-  final TransferManager manager = TransferManager();
-  final TextEditingController passphrase = TextEditingController();
-  File? selected;
-  bool ready = false;
-  bool busy = false;
-  String message = 'هذه نسخة استعادة تجريبية. قنوات النقل لم تُختبر بعد على هاتفين.';
-
-  @override
-  void initState() {
-    super.initState();
-    manager.initialize().then((_) {
-      if (mounted) setState(() => ready = true);
-    }).catchError((Object e) {
-      if (mounted) setState(() => message = 'فشل التهيئة: $e');
-    });
-  }
-
-  @override
-  void dispose() {
-    passphrase.dispose();
-    manager.dispose();
-    super.dispose();
-  }
-
-  Future<void> selectFile() async {
-    try {
-      final files = await FilePicker.platform.pickFiles(withData: false);
-      if (!mounted || files == null || files.files.isEmpty) return;
-      final path = files.files.single.path;
-      if (path == null) throw const FileSystemException('مسار الملف غير متاح');
-      setState(() {
-        selected = File(path);
-        message = 'اختر عبارة مرور ثم جرّب إنشاء ملف مشفّر محلياً.';
-      });
-    } catch (e) {
-      if (mounted) setState(() => message = 'خطأ في اختيار الملف: $e');
-    }
-  }
-
-  Future<void> encryptLocally() async {
-    if (!ready || busy || selected == null) return;
-    if (passphrase.text.length < 12) {
-      setState(() => message = 'عبارة المرور يجب أن تكون 12 حرفاً على الأقل.');
-      return;
-    }
-    setState(() => busy = true);
-    try {
-      manager.begin();
-      manager.update(Phase.transferring);
-      final result = await manager.prepare(selected!, passphrase.text);
-      manager.update(Phase.completed);
-      final size = await result.length();
-      if (mounted) {
-        setState(() => message = 'نجح تجهيز ملف مشفّر ($size بايت). لم يُرسل إلى أي جهاز.');
-      }
-    } catch (e) {
-      if (mounted) setState(() => message = 'فشل اختبار التشفير: $e');
-    } finally {
-      if (mounted) setState(() => busy = false);
-    }
-  }
-
-  void showChannel(Channel channel) {
-    // Wi-Fi and Bluetooth are intentionally outside the optical/acoustic V1
-    // release. Keep their source intact but do not expose unfinished flows.
-    if (channel == Channel.qr) {
-      Navigator.of(context).push(MaterialPageRoute<void>(
-        builder: (_) => const QrTransferPage(),
-      ));
-    } else if (channel == Channel.audio) {
-      Navigator.of(context).push(MaterialPageRoute<void>(
-        builder: (_) => const AudioTransferPage(),
-      ));
-    }
+  void _open(BuildContext context, Widget page) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => page),
+    );
   }
 
   @override
@@ -132,86 +56,65 @@ class _RecoveryHomeState extends State<RecoveryHome> {
     final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(title: const Text('ViaDrop'), centerTitle: true),
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(20),
-          children: [
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(22),
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF3667F6), Color(0xFF31D6CA)],
-                ),
-              ),
-              child: const Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(Icons.hub_rounded, color: Colors.white, size: 38),
-                  SizedBox(height: 12),
-                  Text('شاركها بأي طريقة.', style: TextStyle(
-                    color: Colors.white, fontSize: 23, fontWeight: FontWeight.bold)),
-                  Text('Share beyond connections.', style: TextStyle(color: Colors.white)),
-                ],
-              ),
+      body: SafeArea(child: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(22),
+              gradient: const LinearGradient(colors: [
+                Color(0xFF3667F6), Color(0xFF31D6CA),
+              ]),
             ),
-            const SizedBox(height: 20),
-            Text('النسخة الأولى: النقل بالكاميرا والصوت', style: theme.textTheme.titleMedium),
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
+            child: const Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                ActionChip(
-                  label: const Text('الكاميرا (QR)'),
-                  avatar: const Icon(Icons.qr_code),
-                  onPressed: () => showChannel(Channel.qr),
-                ),
-                ActionChip(
-                  label: const Text('الصوت'),
-                  avatar: const Icon(Icons.graphic_eq),
-                  onPressed: () => showChannel(Channel.audio),
-                ),
+                Icon(Icons.hub_rounded, color: Colors.white, size: 38),
+                SizedBox(height: 12),
+                Text('شاركها بأي طريقة.', style: TextStyle(
+                  color: Colors.white, fontSize: 23, fontWeight: FontWeight.bold,
+                )),
+                Text('Share beyond connections.',
+                  style: TextStyle(color: Colors.white)),
               ],
             ),
-            const SizedBox(height: 8),
-            const Text(
-              'Wi-Fi وBluetooth مؤجلتان للإصدار القادم. '
-              'النقل بالكاميرا والصوت لا يحتاج إلى أي اتصال شبكي، '
-              'لكن يجب اختبارهما بين جهازين قبل اعتماد الإصدار.',
+          ),
+          const SizedBox(height: 22),
+          Text('كيف تحب تشارك؟', style: theme.textTheme.titleLarge),
+          const SizedBox(height: 12),
+          Card(
+            child: ListTile(
+              leading: const CircleAvatar(child: Icon(Icons.qr_code_scanner)),
+              title: const Text('بالكاميرا • QR'),
+              subtitle: const Text('امسح رمز الاقتران ثم انقل الملف عبر الشاشة.'),
+              trailing: const Icon(Icons.chevron_left),
+              onTap: () => _open(context, const QrTransferPage()),
             ),
-            const SizedBox(height: 22),
-            Text('اختبار تشفير محلي — يعمل دون شبكة', style: theme.textTheme.titleMedium),
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
-              onPressed: ready && !busy ? selectFile : null,
-              icon: const Icon(Icons.attach_file),
-              label: Text(selected?.uri.pathSegments.last ?? 'اختر ملفاً'),
+          ),
+          const SizedBox(height: 8),
+          Card(
+            child: ListTile(
+              leading: const CircleAvatar(child: Icon(Icons.graphic_eq)),
+              title: const Text('بالصوت'),
+              subtitle: const Text('قرّب الجهازين واتركهما يتقارنان تلقائياً.'),
+              trailing: const Icon(Icons.chevron_left),
+              onTap: () => _open(context, const AudioTransferPage()),
             ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: passphrase,
-              obscureText: true,
-              enableSuggestions: false,
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(),
-                labelText: 'عبارة مرور (12 حرفاً على الأقل)',
-              ),
-            ),
-            const SizedBox(height: 12),
-            FilledButton.icon(
-              onPressed: ready && !busy && selected != null ? encryptLocally : null,
-              icon: const Icon(Icons.lock_outline),
-              label: Text(busy ? 'يجري التشفير...' : 'تجهيز الملف المشفّر'),
-            ),
-            const SizedBox(height: 12),
-            Card(child: Padding(padding: const EdgeInsets.all(16), child: Text(message))),
-            const SizedBox(height: 30),
-            Text('ViaDrop V1 Preview — الكاميرا والصوت قيد التحقق الميداني',
-              textAlign: TextAlign.center, style: theme.textTheme.bodySmall),
-          ],
-        ),
-      ),
+          ),
+          const SizedBox(height: 20),
+          const Text(
+            'لا تحتاج كلمة مرور أو إنترنت. المفاتيح تُنشأ تلقائياً '
+            'لكل عملية نقل، ويظل المحتوى مشفّراً.',
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'ميزات الكاميرا والصوت تجريبية ويجب التحقق منها بين هاتفين. '
+            'الواي فاي والبلوتوث سيأتيان في إصدار لاحق.',
+            style: TextStyle(fontSize: 12),
+          ),
+        ],
+      )),
     );
   }
 }
