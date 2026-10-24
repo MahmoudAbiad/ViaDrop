@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.22.1)
+project(viadrop_audio)
+add_library(viadrop_audio SHARED bridge.cpp ggwave-src/ggwave.cpp)
+target_include_directories(viadrop_audio PRIVATE include ggwave-src)
+target_compile_features(viadrop_audio PRIVATE cxx_std_17)
+target_compile_options(viadrop_audio PRIVATE -O2)
+target_link_options(viadrop_audio PRIVATE "-Wl,-z,max-page-size=16384")
