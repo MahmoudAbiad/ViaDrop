@@ -1,5 +1,9 @@
 package app.viadrop.viadrop
 import android.bluetooth.*
+import android.content.Context
+import android.content.pm.PackageManager
+import android.hardware.camera2.CameraCharacteristics
+import android.hardware.camera2.CameraManager
 import android.content.Intent
 import android.media.*
 import android.os.Handler
@@ -58,6 +62,9 @@ class MainActivity:FlutterActivity(){
     "btStop"->{stopBluetooth();done()}
     "btListen"->workers.execute{try{listenBluetooth();done()}catch(e:Exception){fail(e)}}
     "btSend"->workers.execute{try{sendBluetooth(call.argument<String>("address")!!,call.argument<String>("path")!!);done()}catch(e:Exception){fail(e)}}
+    "physicalCapabilities"->workers.execute{
+     try{done(probePhysicalCapabilities())}catch(e:Exception){fail(e)}
+    }
     "audioListen"->try{listenAudio(call.argument<Boolean>("fast")==true);done()}catch(e:Exception){fail(e)}
     "audioStop"->{stopAudio();done()}
     "audioPlay"->{
@@ -79,6 +86,50 @@ class MainActivity:FlutterActivity(){
     else->result.notImplemented()
    }
   }
+ }
+ // Checks platform capabilities without requesting microphone/camera permission.
+ // These values are candidate hints, NOT a speaker-to-mic link benchmark.
+ private fun probePhysicalCapabilities():Map<String,Any>{
+  val camera=packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY)
+  val microphone=packageManager.hasSystemFeature(PackageManager.FEATURE_MICROPHONE)
+  var cameraMaxFps=0
+  if(camera){
+   try{
+    val cm=getSystemService(Context.CAMERA_SERVICE) as CameraManager
+    for(id in cm.cameraIdList){
+     val c=cm.getCameraCharacteristics(id)
+     val facing=c.get(CameraCharacteristics.LENS_FACING)
+     if(facing!=CameraCharacteristics.LENS_FACING_BACK)continue
+     val ranges=c.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES)
+     if(ranges!=null)for(range in ranges){
+      cameraMaxFps=maxOf(cameraMaxFps,range.upper)
+     }
+    }
+   }catch(_:Exception){}
+  }
+  val displayHz=try{windowManager.defaultDisplay.refreshRate.toDouble()}catch(_:Exception){0.0}
+  val pcmInput=try{AudioRecord.getMinBufferSize(48000,AudioFormat.CHANNEL_IN_MONO,AudioFormat.ENCODING_PCM_16BIT)>0}catch(_:Exception){false}
+  val pcmOutput=try{AudioTrack.getMinBufferSize(48000,AudioFormat.CHANNEL_OUT_MONO,AudioFormat.ENCODING_PCM_16BIT)>0}catch(_:Exception){false}
+  val audioManager=getSystemService(Context.AUDIO_SERVICE) as AudioManager
+  val ultrasoundInput=try{audioManager.getProperty("android.media.property.SUPPORT_MIC_NEAR_ULTRASOUND")=="true"}catch(_:Exception){false}
+  val ultrasoundOutput=try{audioManager.getProperty("android.media.property.SUPPORT_SPEAKER_NEAR_ULTRASOUND")=="true"}catch(_:Exception){false}
+  var ofdmNative=false
+  var h=0L
+  try{
+   h=ofdmInit()
+   ofdmNative=h!=0L
+  }catch(_:Throwable){
+   ofdmNative=false
+  }finally{
+   if(h!=0L)try{ofdmFree(h)}catch(_:Throwable){}
+  }
+  return mapOf(
+   "probeOk" to true,"camera" to camera,"cameraMaxFps" to cameraMaxFps,
+   "displayHz" to displayHz,"microphone" to microphone,
+   "audioInput48k" to pcmInput,"audioOutput48k" to pcmOutput,
+   "ofdmNative" to ofdmNative,"ultrasoundInput" to ultrasoundInput,
+   "ultrasoundOutput" to ultrasoundOutput
+  )
  }
  private fun playAudio(data:ByteArray,high:Boolean,generation:Int,fast:Boolean){
   if(generation!=audioGeneration)return
