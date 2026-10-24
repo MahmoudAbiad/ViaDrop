@@ -320,6 +320,19 @@ class _QrTransferPageState extends State<QrTransferPage> {
       errorCorrectionLevel: QrErrorCorrectLevel.M, size: 306),
   );
 
+  /// qr_flutter's default string constructor uses Byte mode. Explicitly
+  /// choose Alphanumeric mode so Base45 actually lowers module density.
+  Widget _dataQr(String value) {
+    final qr = QrCode(13, QrErrorCorrectLevel.L)
+      ..addAlphaNumeric(value);
+    return Container(
+      alignment: Alignment.center,
+      padding: const EdgeInsets.all(6),
+      color: Colors.white,
+      child: QrImageView.withQr(qr: qr, size: 324),
+    );
+  }
+
   Widget _scanner() => SizedBox(
     height: 320,
     child: ClipRRect(
@@ -376,7 +389,9 @@ class _QrTransferPageState extends State<QrTransferPage> {
               _scanner(),
             ],
             if (_sending)
-              _staticQr(_frame ?? 'VDQ2:LOADING'),
+              _frame == null
+                  ? const Center(child: CircularProgressIndicator())
+                  : _dataQr(_frame!),
             if (_sending)
               LinearProgressIndicator(value: null),
           ] else ...[
