@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'core/manager.dart';
 import 'core/transfer.dart';
+import 'screens/qr_transfer_page.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -112,6 +113,10 @@ class _RecoveryHomeState extends State<RecoveryHome> {
   }
 
   void showChannel(Channel channel) {
+    if (channel == Channel.qr) {
+      Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const QrTransferPage()));
+      return;
+    }
     final label = switch (channel) {
       Channel.wifi => 'Wi-Fi',
       Channel.bluetooth => 'Bluetooth',
