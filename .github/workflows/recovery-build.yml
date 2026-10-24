@@ -65,8 +65,7 @@ jobs:
           fi
       - name: Run Dart tests
         run: flutter test
-      - name: Static analysis
-        continue-on-error: true
+      - name: Static analysis (fail on warnings and errors)
         run: flutter analyze --no-fatal-infos
       - name: Build recovery preview APK
         run: flutter build apk --debug
