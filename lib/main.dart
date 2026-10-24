@@ -6,6 +6,7 @@ import 'core/manager.dart';
 import 'core/transfer.dart';
 import 'radio_transfer_page.dart';
 import 'screens/qr_transfer_page.dart';
+import 'screens/audio_transfer_page.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -124,6 +125,10 @@ class _RecoveryHomeState extends State<RecoveryHome> {
       Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const QrTransferPage()));
       return;
     }
+    if (channel == Channel.audio) {
+      Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const AudioTransferPage()));
+      return;
+    }
     final label = switch (channel) {
       Channel.wifi => 'Wi-Fi',
       Channel.bluetooth => 'Bluetooth',
@@ -178,7 +183,7 @@ class _RecoveryHomeState extends State<RecoveryHome> {
               ),
             ),
             const SizedBox(height: 20),
-            Text('Wi-Fi وBluetooth للتجربة — QR والصوت قيد الاستعادة', style: theme.textTheme.titleMedium),
+            Text('قنوات النقل الأربع متاحة للتجربة — لم تُختبر بعد على هاتفين', style: theme.textTheme.titleMedium),
             const SizedBox(height: 10),
             Wrap(
               spacing: 8,
