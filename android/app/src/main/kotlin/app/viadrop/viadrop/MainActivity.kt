@@ -31,6 +31,12 @@ class MainActivity:FlutterActivity(){
  private val service=UUID.fromString("4ec874f6-7276-44c2-8c72-e779ae6080b1")
  private val adapter:BluetoothAdapter? get()=getSystemService(BluetoothManager::class.java)?.adapter
  private fun emit(m:Map<String,Any>){main.post{sink?.success(m)}}
+ // A decoded audio frame is only valid for the recording session that
+ // produced it. Recheck on the main thread: stop/new-listen may happen after
+ // the background worker queued an event but before Flutter receives it.
+ private fun emitAudio(generation:Int,m:Map<String,Any>){
+  main.post{if(audioGeneration==generation&&listening)sink?.success(m)}
+ }
  override fun configureFlutterEngine(engine:FlutterEngine){
   super.configureFlutterEngine(engine)
   EventChannel(engine.dartExecutor.binaryMessenger,"app.viadrop/events").setStreamHandler(object:EventChannel.StreamHandler{
@@ -98,13 +104,13 @@ class MainActivity:FlutterActivity(){
      if(n>0&&listening&&audioGeneration==generation&&recorder===r){
       waveDecode(h,b,n)?.let{data->
        if(listening&&audioGeneration==generation&&recorder===r)
-        emit(mapOf("type" to "audioData","data" to data))
+        emitAudio(generation,mapOf("type" to "audioData","data" to data))
       }
      }
     }
    }catch(e:Exception){
     if(listening&&audioGeneration==generation&&recorder===r)
-     emit(mapOf("type" to "error","message" to(e.message?:"Audio error")))
+     emitAudio(generation,mapOf("type" to "error","message" to(e.message?:"Audio error")))
    }finally{
     if(h>=0)waveFree(h)
     try{r.stop()}catch(_:Exception){}
