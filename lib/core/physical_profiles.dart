@@ -27,9 +27,10 @@ class PhysicalProfile {
 
 const physicalProfiles = <PhysicalProfile>[
   PhysicalProfile(
-    id: 'qr-ultra', medium: PhysicalMedium.qr, title: 'Ultra Optical',
-    description: 'ترميز بصري متقدم — قيد البحث ولم يُنفّذ بعد',
-    implemented: false,
+    id: 'qr-ultra', medium: PhysicalMedium.qr,
+    title: 'Ultra Optical • مختبري',
+    description: 'QR إصدار 40: حمولة 2400 بايت وإرسال 30 رمزاً/ثانية. يتطلب شاشة عالية الدقة، كاميرا سريعة، واختبار استقبال فعلي.',
+    qrFps: 30, qrBlockBytes: 2400, qrVersion: 40,
   ),
   PhysicalProfile(
     id: 'qr-dense', medium: PhysicalMedium.qr,
@@ -98,6 +99,7 @@ class PhysicalCapabilities {
     required this.ofdmNative,
     this.androidSdk = 0,
     this.processorCores = 0,
+    this.displayWidthPx = 0,
     required this.ultrasoundInput,
     required this.ultrasoundOutput,
   });
@@ -107,10 +109,10 @@ class PhysicalCapabilities {
         displayHz = 0, microphone = false, audioInput48k = false,
         audioOutput48k = false, ofdmNative = false,
         ultrasoundInput = false, ultrasoundOutput = false,
-        androidSdk = 0, processorCores = 0;
+        androidSdk = 0, processorCores = 0, displayWidthPx = 0;
 
   final bool probeOk, camera, microphone, audioInput48k, audioOutput48k;
-  final int androidSdk, processorCores;
+  final int androidSdk, processorCores, displayWidthPx;
   final bool ofdmNative, ultrasoundInput, ultrasoundOutput;
   final int cameraMaxFps;
   final double displayHz;
@@ -127,6 +129,7 @@ class PhysicalCapabilities {
         ofdmNative: m['ofdmNative'] == true,
         androidSdk: (m['androidSdk'] as num?)?.toInt() ?? 0,
         processorCores: (m['processorCores'] as num?)?.toInt() ?? 0,
+        displayWidthPx: (m['displayWidthPx'] as num?)?.toInt() ?? 0,
         ultrasoundInput: m['ultrasoundInput'] == true,
         ultrasoundOutput: m['ultrasoundOutput'] == true,
       );
@@ -141,6 +144,14 @@ class PhysicalCapabilities {
     if (p.medium == PhysicalMedium.qr) {
       if (!camera) {
         return const ProfileAvailability(false, 'لا توجد كاميرا متاحة');
+      }
+      if (p.id == 'qr-ultra' &&
+          (cameraMaxFps < 30 || displayHz < 59 ||
+              displayWidthPx < 900 || androidSdk < 26 ||
+              processorCores < 4)) {
+        return const ProfileAvailability(
+          false, 'Ultra: تحتاج Android 8+ وكاميرا 30fps وشاشة 60Hz بعرض 900px وأربع أنوية على الأقل',
+        );
       }
       if (p.id == 'qr-dense' &&
           (cameraMaxFps < 30 || displayHz < 59)) {
