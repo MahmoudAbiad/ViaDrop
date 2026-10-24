@@ -12,7 +12,12 @@ Existing notices are in THIRD_PARTY_NOTICES.md and assets/licenses.
 | Cairo / Manrope | Google Fonts | OFL notices bundled |
 | Flutter/Dart and plugins | two pubspec profiles | full resolved/transitive and native audit still required |
 
-No new dependency is introduced by the pairing confirmation change. Do not treat
+The fast-audio experiment adds only the reviewed Cyrinx portable bulk/FFT subset
+(Apache-2.0) and its KISS FFT dependency (BSD-3-Clause). Their source files are
+unchanged, with SHA-256 inventory in docs/CYRINX_SOURCE.json and full license/NOTICE
+assets bundled. KISS FFT BSD text was retrieved from its recorded upstream commit
+5e5058275a72dfc9e474bf78c8daea0ff29c7eb2, LICENSES/BSD-3-Clause.
+No whole Cyrinx application, Swift dependencies or Python runtime is shipped. Do not treat
 this file as complete distribution clearance. Before release record exact resolved
 versions/hashes for both profiles, Android Maven/native artifacts, licenses and
 required notices; replace any incompatible or unlicensed component. Linux-only

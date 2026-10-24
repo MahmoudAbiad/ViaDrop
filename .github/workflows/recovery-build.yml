@@ -14,6 +14,8 @@ jobs:
         run: |
           g++ -std=c++17 -O2 -Iandroid/app/src/main/cpp/include test/native/audio_loopback.cpp android/app/src/main/cpp/ggwave-src/ggwave.cpp -o /tmp/viadrop-audio-test
           /tmp/viadrop-audio-test
+      - name: Simulate fast OFDM and streaming receiver
+        run: bash tools/test_ofdm.sh
       - name: Install Flutter
         uses: subosito/flutter-action@v2
         with:

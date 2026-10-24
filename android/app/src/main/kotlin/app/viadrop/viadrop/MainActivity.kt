@@ -20,6 +20,10 @@ class MainActivity:FlutterActivity(){
  private external fun waveFree(h:Long)
  private external fun waveEncode(h:Long,data:ByteArray,high:Boolean):ByteArray?
  private external fun waveDecode(h:Long,data:ByteArray,n:Int):ByteArray?
+ private external fun ofdmInit():Long
+ private external fun ofdmFree(h:Long)
+ private external fun ofdmEncode(data:ByteArray):ByteArray?
+ private external fun ofdmDecode(h:Long,data:ByteArray):ByteArray?
  private val main=Handler(Looper.getMainLooper());private val workers=Executors.newCachedThreadPool()
  private var sink:EventChannel.EventSink?=null
  @Volatile private var listening=false
@@ -54,18 +58,19 @@ class MainActivity:FlutterActivity(){
     "btStop"->{stopBluetooth();done()}
     "btListen"->workers.execute{try{listenBluetooth();done()}catch(e:Exception){fail(e)}}
     "btSend"->workers.execute{try{sendBluetooth(call.argument<String>("address")!!,call.argument<String>("path")!!);done()}catch(e:Exception){fail(e)}}
-    "audioListen"->try{listenAudio();done()}catch(e:Exception){fail(e)}
+    "audioListen"->try{listenAudio(call.argument<Boolean>("fast")==true);done()}catch(e:Exception){fail(e)}
     "audioStop"->{stopAudio();done()}
     "audioPlay"->{
      // Capture the generation before queuing. A queued playback task must
      // not become valid again if Stop happens before its worker starts.
      val data=call.argument<ByteArray>("data")
      val high=call.argument<Boolean>("high")==true
+     val fast=call.argument<Boolean>("fast")==true
      val generation=audioGeneration
      workers.execute{
       try{
        if(data==null)throw IllegalArgumentException("Missing audio data")
-       playAudio(data,high,generation)
+       playAudio(data,high,generation,fast)
        done()
       }catch(e:Exception){fail(e)}
      }
@@ -75,11 +80,11 @@ class MainActivity:FlutterActivity(){
    }
   }
  }
- private fun playAudio(data:ByteArray,high:Boolean,generation:Int){
+ private fun playAudio(data:ByteArray,high:Boolean,generation:Int,fast:Boolean){
   if(generation!=audioGeneration)return
   val h=waveInit();if(h<0)throw IOException("Audio initialization failed")
   try{
-   val pcm=waveEncode(h,data,high)?:throw IOException("Encoding failed");if(generation!=audioGeneration)return
+   val pcm=(if(fast)ofdmEncode(data) else waveEncode(h,data,high))?:throw IOException("Encoding failed");if(generation!=audioGeneration)return
    val min=AudioTrack.getMinBufferSize(48000,AudioFormat.CHANNEL_OUT_MONO,AudioFormat.ENCODING_PCM_16BIT)
    val player=AudioTrack.Builder().setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build()).setAudioFormat(AudioFormat.Builder().setSampleRate(48000).setChannelMask(AudioFormat.CHANNEL_OUT_MONO).setEncoding(AudioFormat.ENCODING_PCM_16BIT).build()).setBufferSizeInBytes(maxOf(min,8192)).setTransferMode(AudioTrack.MODE_STREAM).build()
    track=player
@@ -87,7 +92,7 @@ class MainActivity:FlutterActivity(){
    finally{try{player.stop()}catch(_:Exception){};player.release();if(track===player)track=null}
   }finally{waveFree(h)}
  }
- private fun listenAudio(){
+ private fun listenAudio(fast:Boolean){
   if(listening)return
   // The previous recording worker owns its AudioRecord until its finally
   // block releases it. Never create a second one while that release is pending.
@@ -104,6 +109,25 @@ class MainActivity:FlutterActivity(){
    r.release()
    throw e
   }
+  // Dedicated bounded queue: OFDM CPU work must not block microphone reads.
+  // If a slow phone falls behind, discard the backlog and reconstruct from
+  // later repeated fountain packets rather than allowing unbounded memory.
+  val fastQueue=ArrayBlockingQueue<ByteArray>(48)
+  if(fast)workers.execute{
+   val h=ofdmInit()
+   try{
+    if(h==0L)throw IOException("OFDM initialization failed")
+    while(listening&&audioGeneration==generation&&recorder===r){
+     val pcm=fastQueue.poll(200,TimeUnit.MILLISECONDS)?:continue
+     ofdmDecode(h,pcm)?.let{data->
+      if(listening&&audioGeneration==generation&&recorder===r)
+       emitAudio(generation,mapOf("type" to "audioData","data" to data))
+     }
+    }
+   }catch(e:Exception){
+    emitAudio(generation,mapOf("type" to "error","message" to(e.message?:"OFDM error")))
+   }finally{if(h!=0L)ofdmFree(h)}
+  }
   workers.execute{
    var h=-1L
    try{
@@ -116,6 +140,7 @@ class MainActivity:FlutterActivity(){
      val n=r.read(b,0,b.size)
      if(n<0)throw IOException("Microphone read failed")
      if(n>0&&listening&&audioGeneration==generation&&recorder===r){
+      if(fast&&!fastQueue.offer(b.copyOf(n))){fastQueue.clear();fastQueue.offer(b.copyOf(n))}
       waveDecode(h,b,n)?.let{data->
        if(listening&&audioGeneration==generation&&recorder===r)
         emitAudio(generation,mapOf("type" to "audioData","data" to data))

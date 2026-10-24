@@ -7,10 +7,11 @@ class AudioEstimate {
   final int lowerMinutes;
   final int upperMinutes;
 
-  static AudioEstimate forInputBytes(int bytes) {
+  static AudioEstimate forInputBytes(int bytes, {bool fast = false}) {
     if (bytes < 0) throw ArgumentError.value(bytes, 'bytes');
-    final frames = (bytes + 1024 + 99) ~/ 100;
-    final seconds = frames * (8.747 + 0.180);
+    final block = fast ? 900 : 100;
+    final frames = (bytes + 1024 + block - 1) ~/ block;
+    final seconds = frames * ((fast ? 0.661334 : 8.747) + 0.180);
     return AudioEstimate((seconds * 1.25 / 60).ceil(),
         (seconds * 2 / 60).ceil());
   }

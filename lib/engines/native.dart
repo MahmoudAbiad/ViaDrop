@@ -7,8 +7,8 @@ import '../core/transfer.dart';
 class NativeBridge {
  static const methods=MethodChannel('app.viadrop/native');
  static final events=const EventChannel('app.viadrop/events').receiveBroadcastStream().asBroadcastStream();
- static Future<void> play(Uint8List data,bool high)async=>methods.invokeMethod('audioPlay',{'data':data,'high':high});
- static Future<void> listen()async{if(!await Permission.microphone.request().isGranted)throw StateError('Microphone permission denied');await methods.invokeMethod('audioListen');}
+ static Future<void> play(Uint8List data,bool high,{bool fast=false})async=>methods.invokeMethod('audioPlay',{'data':data,'high':high,'fast':fast});
+ static Future<void> listen({bool fast=false})async{if(!await Permission.microphone.request().isGranted)throw StateError('Microphone permission denied');await methods.invokeMethod('audioListen',{'fast':fast});}
  static Future<void> stopAudio()async=>methods.invokeMethod('audioStop');
 }
 class BluetoothEngine extends TransferEngine {

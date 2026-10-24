@@ -51,6 +51,7 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
   bool _sending = false;
   bool _finalizing = false;
   bool _highFrequency = false;
+  bool _fastAudio = true;
   bool _sendMode = true;
   double _progress = 0;
   String _status = 'نقل صوتي حقيقي من السماعة إلى الميكروفون دون أي شبكة.';
@@ -135,9 +136,9 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
       final engine = PhysicalEngine(
         Channel.audio,
         sessionId: _pairing!.sessionId,
-        emit: (Uint8List packet) => NativeBridge.play(packet, _highFrequency),
+        emit: (Uint8List packet) => NativeBridge.play(packet, _highFrequency, fast: _fastAudio),
         stopListening: NativeBridge.stopAudio,
-      );
+      )..audioBlockLength = _fastAudio ? 900 : 100;
       await engine.send(encrypted, null, token, (sent, total) {
         if (mounted) {
           setState(() {
@@ -192,7 +193,7 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
         onError: (Object error) =>
             unawaited(_failReceive('خطأ في الاقتران الصوتي: $error')),
       );
-      await NativeBridge.listen();
+      await NativeBridge.listen(fast: _fastAudio);
       if (!mounted) {
         await NativeBridge.stopAudio();
         return;
@@ -340,7 +341,7 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
         _result = null;
         _status = 'جارٍ تشغيل الاقتران الصوتي...';
       });
-      await NativeBridge.listen();
+      await NativeBridge.listen(fast: _fastAudio);
       // Stop can be pressed while permission_handler is still waiting for
       // the user. Do not leave an orphan microphone session when the native
       // call returns after the receiver was cancelled or disposed.
@@ -478,7 +479,7 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
   Widget build(BuildContext context) {
     final bytes = _text.text.trim().isNotEmpty
         ? utf8.encode(_text.text).length : _sourceBytes;
-    final estimate = AudioEstimate.forInputBytes(bytes);
+    final estimate = AudioEstimate.forInputBytes(bytes, fast: _fastAudio);
     return Scaffold(
       appBar: AppBar(title: const Text('ViaDrop • Audio')),
       body: SafeArea(child: ListView(
@@ -503,6 +504,13 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
             'الاقتران آلي بإشارات صوتية قصيرة؛ لا تحتاج إلى رمز تشفير.',
           ),
           const SizedBox(height: 12),
+          SwitchListTile(
+            title: const Text('صوت سريع OFDM • تجريبي'),
+            subtitle: const Text('فعّله على الجهازين. يستخدم صوتاً مسموعاً؛ '
+                'لم يُختبر بعد على هاتفين. لا يوجد تبديل خفي إلى الشبكة.'),
+            value: _fastAudio,
+            onChanged: _active ? null : (value) => setState(() => _fastAudio = value),
+          ),
           if (_sendMode) ...[
             TextField(
               controller: _text,
@@ -529,10 +537,10 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
                       'لا يشمل الاقتران، وقد يزيد مع الضجيج أو فقد الإشارات.'),
               ),
             SwitchListTile(
-              title: const Text('الترددات العالية (تجريبية)'),
+              title: const Text('الترددات العالية (للوضع البطيء)'),
               subtitle: const Text('قد لا تدعمها سماعة أو ميكروفون بعض الهواتف.'),
               value: _highFrequency,
-              onChanged: _active ? null : (value) => setState(() => _highFrequency = value),
+              onChanged: _active || _fastAudio ? null : (value) => setState(() => _highFrequency = value),
             ),
             if (!_sending && !_pairingSender && !_senderReady)
               FilledButton.icon(

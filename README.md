@@ -17,7 +17,9 @@ Implemented paths:
 - Bluetooth Classic RFCOMM between paired devices, consent and acknowledgement.
 - Camera-only animated Base45 QR frames, fountain reconstruction and two-scan
   ephemeral X25519 pairing; no radio fallback.
-- Speaker-to-microphone ggwave packets and acoustic X25519 pairing; no radio fallback.
+- Speaker-to-microphone audio: experimental wideband OFDM file packets, with
+  ggwave acoustic X25519 pairing and an explicitly selectable slower ggwave data mode.
+  No radio fallback.
 - AES-GCM file envelopes, SHA-256 verification, safe output filenames and history.
 - Optical/acoustic peer fingerprint comparison before file transfer, without
   typing a password. Compare the entire code on both devices; cancel on mismatch.

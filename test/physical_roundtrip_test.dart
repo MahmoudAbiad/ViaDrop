@@ -19,6 +19,9 @@ void main() {
     final large = AudioEstimate.forInputBytes(48 * 1024);
     expect(large.lowerMinutes, greaterThan(60));
     expect(large.upperMinutes, greaterThan(large.lowerMinutes));
+    final fast = AudioEstimate.forInputBytes(48 * 1024, fast: true);
+    expect(fast.lowerMinutes, lessThan(3));
+    expect(fast.upperMinutes, lessThan(large.lowerMinutes));
     expect(() => AudioEstimate.forInputBytes(-1), throwsArgumentError);
   });
   test('QR fountain transport restores complete bytes despite lost frames', () {
@@ -81,8 +84,9 @@ void main() {
     expect(decoder.progress, greaterThan(0));
   });
 
-  for (final channel in [Channel.qr, Channel.audio]) {
-    test('encrypted ${channel.name} frames restore the original file end-to-end', () async {
+  for (final profile in [(Channel.qr, 100), (Channel.audio, 100), (Channel.audio, 900)]) {
+    final channel = profile.$1;
+    test('encrypted ${channel.name}/${profile.$2} frames restore the original file end-to-end', () async {
       final directory =
           await Directory.systemTemp.createTemp('viadrop-${channel.name}-e2e-');
       final token = CancelToken();
@@ -116,6 +120,7 @@ void main() {
           },
         )
           ..blockLength = 180
+          ..audioBlockLength = profile.$2
           ..fps = 60;
 
         await expectLater(

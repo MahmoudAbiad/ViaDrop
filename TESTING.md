@@ -43,3 +43,23 @@ commit, APK hash, channel, mode, input/output SHA-256, elapsed time and outcome.
    preparation/verification, temp cleanup, empty files and insufficient storage.
 
 No physical completion rate or measured on-device throughput is available yet.
+
+## Fast-audio implementation checkpoint
+
+`bash tools/test_ofdm.sh` builds the exact vendored C codec and original C++
+streaming adapter. Local simulation passed: nine OFDM configurations/noise/echo
+cases and two four-packet unaligned PCM16 streams (clean and noise plus a 5 ms
+20% echo). Every decoded packet matched the original bytes; the receiver requires
+all CRC blocks to pass before releasing a packet. It buffers at most 65,536
+samples and Android queues at most 48 PCM reads, discarding a backlog on overload.
+
+The selected profile is 16-QAM rate 1/2, 1.1–16 kHz, 48 kHz mono: 1,024 modem
+bytes per 0.6613-second waveform, carrying a 900-byte fountain block plus framing.
+The 180 ms gap and fountain overhead reduce useful throughput. A 48 KiB input
+is estimated around 1–2 minutes plus acoustic pairing under favorable conditions;
+this is NOT a device benchmark or upper bound. Slower mode remains explicit.
+Both phones must select the same mode. Fast mode is audible only.
+
+Physical tests must now additionally exercise Android CPU load/backlog behavior,
+room echo, frequency response, microphone gain and sample-clock drift. These
+were not modeled comprehensively by the deterministic simulation.

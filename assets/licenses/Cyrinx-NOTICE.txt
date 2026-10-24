@@ -1,0 +1,17 @@
+Cyrinx
+Copyright 2026 Primatech Paper Co LLC
+
+This product includes software developed by Primatech Paper Co LLC
+(David E. Weekly) and contributors.
+
+Licensed under the Apache License, Version 2.0 (the "License"); see the LICENSE
+file. You may obtain a copy of the License at:
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Third-party components carry their own licenses:
+
+  KISS FFT — Copyright (c) 2003-2010 Mark Borgerding. All rights reserved.
+  SPDX-License-Identifier: BSD-3-Clause. Vendored under
+  Sources/CCyrinx/kissfft/ (see Sources/CCyrinx/kissfft/COPYING) and used as the
+  portable FFT backend of the C bulk-PHY core.

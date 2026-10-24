@@ -21,3 +21,10 @@ Pairing and envelope security have not undergone independent security review.
 Fingerprint comparison requires checking both physical screens. Do not describe
 this experimental application as independently audited end-to-end encryption.
 Reference: https://www.rfc-editor.org/rfc/rfc7748#section-6.1
+
+Fast audio uses an isolated `ofdm_codec` JNI adapter over a pinned portable Cyrinx
+subset and KISS FFT. Ggwave still handles short acoustic pairing messages.
+The receiver runs bounded OFDM work on a separate worker so it does not block
+AudioRecord. All files still pass through the same encrypted fountain transport
+and final SHA-256 verification. Users select fast/slow audio explicitly; no
+network transport is called in either path.

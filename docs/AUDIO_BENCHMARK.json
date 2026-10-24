@@ -1,0 +1,110 @@
+[
+  {
+    "bits": 2,
+    "symbols": 16,
+    "rate": "1/2",
+    "payload": 1024,
+    "waveform_seconds": 1.088,
+    "bytes_per_second": 941.1764705882352,
+    "noise": 0,
+    "echo": 0,
+    "verified": true,
+    "decode_seconds": 0.4196365999998761
+  },
+  {
+    "bits": 2,
+    "symbols": 16,
+    "rate": "1/2",
+    "payload": 1024,
+    "waveform_seconds": 1.088,
+    "bytes_per_second": 941.1764705882352,
+    "noise": 0.001,
+    "echo": 0,
+    "verified": true,
+    "decode_seconds": 0.3059732859999258
+  },
+  {
+    "bits": 2,
+    "symbols": 16,
+    "rate": "1/2",
+    "payload": 1024,
+    "waveform_seconds": 1.088,
+    "bytes_per_second": 941.1764705882352,
+    "noise": 0.001,
+    "echo": 0.2,
+    "verified": true,
+    "decode_seconds": 0.34503666599994176
+  },
+  {
+    "bits": 4,
+    "symbols": 8,
+    "rate": "1/2",
+    "payload": 1024,
+    "waveform_seconds": 0.6613333333333333,
+    "bytes_per_second": 1548.3870967741937,
+    "noise": 0,
+    "echo": 0,
+    "verified": true,
+    "decode_seconds": 0.228881981999848
+  },
+  {
+    "bits": 4,
+    "symbols": 8,
+    "rate": "1/2",
+    "payload": 1024,
+    "waveform_seconds": 0.6613333333333333,
+    "bytes_per_second": 1548.3870967741937,
+    "noise": 0.001,
+    "echo": 0,
+    "verified": true,
+    "decode_seconds": 0.2633904499998607
+  },
+  {
+    "bits": 4,
+    "symbols": 8,
+    "rate": "1/2",
+    "payload": 1024,
+    "waveform_seconds": 0.6613333333333333,
+    "bytes_per_second": 1548.3870967741937,
+    "noise": 0.001,
+    "echo": 0.2,
+    "verified": true,
+    "decode_seconds": 0.22232719099997666
+  },
+  {
+    "bits": 4,
+    "symbols": 8,
+    "rate": "3/4",
+    "payload": 1536,
+    "waveform_seconds": 0.6613333333333333,
+    "bytes_per_second": 2322.5806451612902,
+    "noise": 0,
+    "echo": 0,
+    "verified": true,
+    "decode_seconds": 0.22884876300008727
+  },
+  {
+    "bits": 4,
+    "symbols": 8,
+    "rate": "3/4",
+    "payload": 1536,
+    "waveform_seconds": 0.6613333333333333,
+    "bytes_per_second": 2322.5806451612902,
+    "noise": 0.001,
+    "echo": 0,
+    "verified": true,
+    "decode_seconds": 0.18996827199998734
+  },
+  {
+    "bits": 4,
+    "symbols": 8,
+    "rate": "3/4",
+    "payload": 1536,
+    "waveform_seconds": 0.6613333333333333,
+    "bytes_per_second": 2322.5806451612902,
+    "noise": 0.001,
+    "echo": 0.2,
+    "verified": true,
+    "decode_seconds": 0.19261897399996997
+  }
+]
