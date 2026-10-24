@@ -333,7 +333,10 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
       if (mounted) setState(() {
         _result = received;
         _progress = 1;
-        _status = 'تم استقبال الملف وفك التشفير والتحقق منه بنجاح.';
+        _status = 'تم الاستقبال والتحقق من الملف. '
+            'سرعة حمولة الاستقبال: ${_decoder.payloadKiBPerSecond.toStringAsFixed(1)} KiB/s، '
+            'إطارات سليمة: ${_decoder.validFrames}، '
+            'إطارات مرفوضة: ${_decoder.rejectedFrames}.';
       });
     } catch (error) {
       _show('فشل فك التشفير أو فحص سلامة الملف: $error');
