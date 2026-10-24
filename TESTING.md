@@ -5,8 +5,10 @@
 - `recovery_test.dart`: state transitions, unsafe names, AES-GCM round trip,
   incorrect password, modified ciphertext and cleanup.
 - `physical_roundtrip_test.dart`: loss/duplicates, batch QR capture, corrupt payload,
-  encrypted envelope through fountain packets, session binding, Base45, X25519,
-  peer fingerprints, concurrent replies and low-order key rejection.
+  encrypted envelope through fountain packets, session binding, Base45, and
+  legacy X25519 crypto tests.
+- `one_way_session_test.dart`: one-way invitation parsing, independent keys,
+  malformed starts, session filtering and encrypted fountain reconstruction.
 - `lan_integration_test.dart`: local host HTTP consent/streaming/error scenarios.
 - `native/audio_loopback.cpp`: actual ggwave PCM encode/decode at 48 kHz signed
   16-bit mono, audible-fast and ultrasound-fast, 64/132/140-byte packets, with
@@ -23,34 +25,29 @@ its own test/build results in GitHub Actions.
 Use Samsung J7/Android 6 ARM32 and a modern ARM64 phone. Record both model/OS,
 commit, APK hash, channel, mode, input/output SHA-256, elapsed time and outcome.
 
-1. QR: airplane mode, radios off; pair by two scans, compare fingerprints,
-   confirm on both devices, transfer empty file, Arabic text/name, image, PDF,
-   random bytes and increasing sizes up to the cap. Test late camera start,
-   frame loss, stop/restart and fast mode. Never accept a partial output.
-2. Audio: airplane mode, radios off; receiver then sender, compare fingerprints,
-   receiver confirms then sender confirms. Begin with a short note. Test small
-   binary data and larger files separately, quiet/noisy rooms and varied volume.
-   High-frequency mode is a separate optional device capability test.
-   - Acoustic handshake turn-taking (main): on Receive, only the receiver
-     broadcasts the initial audible invitation, then leaves about 4.8 s of
-     silence for the sender's reply. The sender must emit one reply per decoded
-     invitation, not a continuous stream. Check that both speakers do not
-     continuously transmit at the same time before the fingerprint screen.
-   - Intentionally block the first reply (e.g. move phones apart), then restore
-     proximity: the receiver retries an invitation and the sender replies to
-     that invitation again. Do not create another X25519 pairing on retry.
-   - Confirm the receiver fingerprint first, verify its authenticated READY
-     signal reaches the sender; test a dropped READY signal and its 8-second
-     retry. Verify retries cease as soon as the first valid file frame arrives.
-   - Stop/restart from both phones during invitation, reply, READY and active
-     transfer. Verify stale audio playback does not resume on a new session.
-   - A READY retransmission could still overlap a delayed sender data start;
-     test this with a long pause on the sender confirmation screen. A real
-     two-device run is required before claiming collision-free reliability.
-3. Pairing: cancel when fingerprints differ; no file should start before sender
-   confirmation. Test malformed/duplicate/replayed handshake packets and rapid
-   stop/restart. Test old APK interoperability explicitly; use current APKs on
-   both devices for the confirmation workflow.
+1. QR: airplane mode, radios off. Show a static one-way start QR on sender;
+   scan it once with the receiver. Wait before pressing Start, then verify the
+   sender's 3-second countdown and automatic switch to fountain QRs. Test
+   empty files, Arabic text/names, image, PDF, random bytes, missing frames,
+   stop/restart and fast mode. No response scan or confirmation is expected.
+   Never accept partial output.
+2. Audio: airplane mode, radios off. Start receiver first: it must listen
+   silently with **no playback**. Sender then emits start announcement(s) and
+   file data. Verify no receiver sound during any phase. Begin with short text,
+   then binaries and larger files. Test both slow/fast data paths and volume/
+   noise/placement conditions. Old and new APKs are not interoperable.
+   - Block first ggwave announcement, then restore audio proximity. Confirm
+     another announcement is sent after 24 data frames and receiver can join.
+   - Stop/restart while sending start tones, during OFDM data, during decoding,
+     or while finalizing. Check no orphan microphone or stale playback.
+   - Confirm a second unrelated session's data cannot contaminate an active
+     receiver session, and AES-GCM and SHA-256 verify the final file.
+   - Receiver sends no ACK; sender must be stopped manually after verifying
+     success on the receiver.
+3. Protocol/security: malformed VDS2 QR/audio announcements are rejected.
+   An observer who captured VDS2 can decrypt this intentionally public-key
+   announcement; explicitly warn users not to send sensitive files. Legacy
+   X25519 unit tests are retained but no longer drive either physical UI.
 4. LAN: offline router, accept/reject, multiple files, large-file memory use,
    interrupted connection, bad digest, filename traversal and output cleanup.
 5. Bluetooth: secure paired RFCOMM, permission denial, rejection, interruption,
@@ -72,7 +69,7 @@ samples and Android queues at most 48 PCM reads, discarding a backlog on overloa
 The selected profile is 16-QAM rate 1/2, 1.1–16 kHz, 48 kHz mono: 1,024 modem
 bytes per 0.6613-second waveform, carrying a 900-byte fountain block plus framing.
 The 180 ms gap and fountain overhead reduce useful throughput. A 48 KiB input
-is estimated around 1–2 minutes plus acoustic pairing under favorable conditions;
+is estimated around 1–2 minutes plus start announcements under favorable conditions;
 this is NOT a device benchmark or upper bound. Slower mode remains explicit.
 Both phones must select the same mode. Fast mode is audible only.
 
