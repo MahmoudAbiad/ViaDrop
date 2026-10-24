@@ -170,7 +170,7 @@ void main() {
     expect(received, orderedEquals(payload));
   });
 
-  test('$testName', () {
+  test('invalid payload checksum resets decoder for a new audio session', () {
     final corruptedPayload = Uint8List.fromList(
       List<int>.generate(120, (index) => (index * 11 + 1) % 256),
     );

@@ -197,7 +197,19 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
       _finalizing = true;
       unawaited(_finishReceive(complete));
     } catch (error) {
-      _show('إطار صوتي غير صالح: ' + error.toString());
+      if (_decoder.header == null) {
+        // A completed burst with a bad payload checksum was rejected.
+        // The decoder discarded the corrupted session, so reset the UI as
+        // well while keeping the microphone ready for a fresh transmission.
+        if (mounted) {
+          setState(() {
+            _progress = 0;
+            _status = 'تم تجاهل إرسال صوتي تالف. ما زلنا نستمع لإرسال جديد.';
+          });
+        }
+      } else {
+        _show('إطار صوتي غير صالح: $error');
+      }
     }
   }
 
