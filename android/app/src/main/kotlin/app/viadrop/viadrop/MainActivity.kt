@@ -125,7 +125,9 @@ class MainActivity:FlutterActivity(){
   }
   return mapOf(
    "probeOk" to true,"camera" to camera,"cameraMaxFps" to cameraMaxFps,
-   "displayHz" to displayHz,"microphone" to microphone,
+   "displayHz" to displayHz,
+   "displayWidthPx" to resources.displayMetrics.widthPixels,
+   "microphone" to microphone,
    "audioInput48k" to pcmInput,"audioOutput48k" to pcmOutput,
    "ofdmNative" to ofdmNative,
    "androidSdk" to android.os.Build.VERSION.SDK_INT,
