@@ -34,6 +34,7 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
   bool _receiving = false;
   // Protect the asynchronous microphone-permission/startup window.
   bool _listenStarting = false;
+  bool _listenStopping = false;
   bool _sending = false;
   bool _finalizing = false;
   bool _highFrequency = false;
@@ -55,7 +56,8 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
     if (mounted) setState(() => _status = status);
   }
 
-  bool get _active => _receiving || _listenStarting || _sending || _finalizing;
+  bool get _active =>
+      _receiving || _listenStarting || _listenStopping || _sending || _finalizing;
   bool get _validPass => _pass.text.length >= 12;
 
   Future<void> _pick() async {
@@ -252,16 +254,20 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
   }
 
   Future<void> _stopReceive() async {
-    // Invalidate the UI session *before* the first await. Native listen()
-    // may complete in the same interval while Android grants permission.
-    if (mounted && _receiving) setState(() => _receiving = false);
-    try {
-      await NativeBridge.stopAudio();
-    } catch (_) {}
-    await _events?.cancel();
-    _events = null;
-    try { await WakelockPlus.disable(); } catch (_) {}
+    // Invalidate the UI before awaiting any native call, but keep the
+    // stopping guard active until all resources have been released.
+    if (_listenStopping) return;
+    _listenStopping = true;
     if (mounted) setState(() => _receiving = false);
+    try {
+      try { await NativeBridge.stopAudio(); } catch (_) {}
+      await _events?.cancel();
+      _events = null;
+      try { await WakelockPlus.disable(); } catch (_) {}
+    } finally {
+      _listenStopping = false;
+      if (mounted) setState(() => _receiving = false);
+    }
   }
 
   @override
