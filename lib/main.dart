@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'core/manager.dart';
 import 'core/transfer.dart';
+import 'radio_transfer_page.dart';
 import 'screens/qr_transfer_page.dart';
 
 void main() {
@@ -113,6 +114,12 @@ class _RecoveryHomeState extends State<RecoveryHome> {
   }
 
   void showChannel(Channel channel) {
+    if (channel == Channel.wifi || channel == Channel.bluetooth) {
+      Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) => RadioTransferPage(manager: manager, channel: channel),
+      ));
+      return;
+    }
     if (channel == Channel.qr) {
       Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const QrTransferPage()));
       return;
@@ -134,7 +141,7 @@ class _RecoveryHomeState extends State<RecoveryHome> {
           children: [
             Text(label, style: Theme.of(ctx).textTheme.titleLarge),
             const SizedBox(height: 12),
-            const Text('كود المحرك الأساسي موجود، لكن واجهة الإرسال والاستقبال والاختبار على جهازين لم تكتمل بعد.'),
+            const Text('القناة البصرية/الصوتية لم تربط بعد بواجهة إرسال واستقبال، ولا نعرض نجاحاً وهمياً.'),
             const SizedBox(height: 16),
           ],
         ),
@@ -171,7 +178,7 @@ class _RecoveryHomeState extends State<RecoveryHome> {
               ),
             ),
             const SizedBox(height: 20),
-            Text('المحركات الأربعة — قيد الاستعادة', style: theme.textTheme.titleMedium),
+            Text('Wi-Fi وBluetooth للتجربة — QR والصوت قيد الاستعادة', style: theme.textTheme.titleMedium),
             const SizedBox(height: 10),
             Wrap(
               spacing: 8,
