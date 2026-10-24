@@ -332,7 +332,10 @@ class _QrTransferPageState extends State<QrTransferPage> {
   );
 
   Widget _dataQr(String data) {
-    final qr = QrCode(13, QrErrorCorrectLevel.L)..addAlphaNumeric(data);
+    final version = _session == null ? 13 :
+        (physicalProfileById(_session!.profileId)?.qrVersion ?? 13);
+    final qr = QrCode(version, QrErrorCorrectLevel.L)
+      ..addAlphaNumeric(data);
     return Container(
       alignment: Alignment.center,
       padding: const EdgeInsets.all(6),
