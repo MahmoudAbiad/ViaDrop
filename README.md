@@ -15,14 +15,18 @@ unchanged. This is an internal test application, not a production release.
 Implemented paths:
 - Wi-Fi LAN discovery, consent and streaming encrypted HTTP file transfer.
 - Bluetooth Classic RFCOMM between paired devices, consent and acknowledgement.
-- Camera-only animated Base45 QR frames, fountain reconstruction and two-scan
-  ephemeral X25519 pairing; no radio fallback.
-- Speaker-to-microphone audio: experimental wideband OFDM file packets, with
-  ggwave acoustic X25519 pairing and an explicitly selectable slower ggwave data mode.
-  No radio fallback.
+- Camera-only Base45 QR frames: **one static start QR** on the sender; scan it
+  once on the receiver, then manually start a three-second countdown before
+  animated data QRs. No return scan, network, or acknowledgement.
+- Speaker-to-microphone audio: **sender broadcasts** a ggwave start message
+  followed by OFDM (or slower ggwave) file frames. The receiver only listens,
+  with no reply, pairing tones or fingerprint step. Starts repeat if lost.
 - AES-GCM file envelopes, SHA-256 verification, safe output filenames and history.
-- Optical/acoustic peer fingerprint comparison before file transfer, without
-  typing a password. Compare the entire code on both devices; cancel on mismatch.
+- **Privacy warning:** the one-way start message contains the random file key.
+  Anyone nearby who sees/scans the initial QR or records/decodes the start
+  audio can decrypt the transfer. This is intentionally NOT confidential or
+  authenticated encryption against an eavesdropper. Do not share secrets
+  over these one-way physical modes. LAN/Bluetooth remain separate paths.
 
 Current physical-channel limits: QR 512 KiB encrypted; audio 48 KiB input and
 64 KiB encrypted. High-frequency audio and fast QR are experimental. Neither
