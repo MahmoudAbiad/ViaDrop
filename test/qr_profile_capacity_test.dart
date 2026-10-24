@@ -27,8 +27,10 @@ void main() {
       expect(decodeQrFrame(encoded), orderedEquals(packet));
       final qr = QrCode(profile.qrVersion, QrErrorCorrectLevel.L)
         ..addAlphaNumeric(encoded);
-      // This validates QR storage/segment capacity, not camera recognition.
-      expect(() => qr.make(), returnsNormally);
+      // QrImage performs the actual codeword/mask generation (QrCode.make
+      // was removed in qr 3.x). This is not a camera-recognition benchmark.
+      final matrix = QrImage(qr);
+      expect(matrix.moduleCount, 17 + profile.qrVersion * 4);
     });
   }
 }
