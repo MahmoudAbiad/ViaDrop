@@ -37,7 +37,9 @@ broadcast after verifying success on the receiving phone.
 
 Camera and audio screens now show device-checked profile dropdowns, ordered by
 expected throughput. Implemented modes are enabled only after local capability
-checks; planned high-density QR/OFDM modes remain disabled. The selector controls
+checks; experimental dense QR and low-gap OFDM Turbo are available only
+on eligible devices, while Ultra Optical and new OFDM modulation are not
+implemented. The selector controls
 the real QR frame size/speed or acoustic codec, and a VDS3 one-way start packet
 includes the profile ID. Both devices must select the same profile; the receiver
 rejects a mismatched start (no hidden fallback or acoustic acknowledgement).
