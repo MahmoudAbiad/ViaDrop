@@ -31,6 +31,22 @@ commit, APK hash, channel, mode, input/output SHA-256, elapsed time and outcome.
    receiver confirms then sender confirms. Begin with a short note. Test small
    binary data and larger files separately, quiet/noisy rooms and varied volume.
    High-frequency mode is a separate optional device capability test.
+   - Acoustic handshake turn-taking (main): on Receive, only the receiver
+     broadcasts the initial audible invitation, then leaves about 4.8 s of
+     silence for the sender's reply. The sender must emit one reply per decoded
+     invitation, not a continuous stream. Check that both speakers do not
+     continuously transmit at the same time before the fingerprint screen.
+   - Intentionally block the first reply (e.g. move phones apart), then restore
+     proximity: the receiver retries an invitation and the sender replies to
+     that invitation again. Do not create another X25519 pairing on retry.
+   - Confirm the receiver fingerprint first, verify its authenticated READY
+     signal reaches the sender; test a dropped READY signal and its 8-second
+     retry. Verify retries cease as soon as the first valid file frame arrives.
+   - Stop/restart from both phones during invitation, reply, READY and active
+     transfer. Verify stale audio playback does not resume on a new session.
+   - A READY retransmission could still overlap a delayed sender data start;
+     test this with a long pause on the sender confirmation screen. A real
+     two-device run is required before claiming collision-free reliability.
 3. Pairing: cancel when fingerprints differ; no file should start before sender
    confirmation. Test malformed/duplicate/replayed handshake packets and rapid
    stop/restart. Test old APK interoperability explicitly; use current APKs on
