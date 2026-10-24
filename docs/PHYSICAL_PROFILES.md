@@ -11,10 +11,15 @@ The device probe is exposed by `MainActivity.kt` as
 `MethodChannel('app.viadrop/native').physicalCapabilities`:
 - QR: a camera feature flag, Camera2 back-camera target FPS ranges, and
   current display refresh rate. Fast QR requires >=30 FPS available and
-  >=50 Hz screen; standard QR only needs a camera.
+  >=50 Hz screen; dense QR requires >=30 FPS and ~60 Hz. Standard QR only
+  requires a camera. Dense mode uses the larger version 17 matrix, without
+  any claim that the camera can reliably decode nine dense codes per second.
 - Audio: microphone presence, AudioRecord/AudioTrack minimum buffer for
   PCM16 mono 48 kHz, and successful native OFDM init. High frequency
   additionally requires Android AudioManager near-ultrasound property flags.
+  Experimental Turbo reuses 16-QAM OFDM but reduces inter-frame silence from
+  180 ms to 40 ms; local candidacy requires Android 8+ and >=4 CPU cores.
+  The actual improvement and decoding error rate are still unmeasured.
 - If the probe fails, no mode is enabled (fail closed), with a retry button.
 - The probe does **not** measure speaker response, camera autofocus,
   sustained decoder throughput, environmental echo or a remote phone.
@@ -24,10 +29,10 @@ The device probe is exposed by `MainActivity.kt` as
 | Profile ID | Role | Native implementation | Selection |
 | --- | --- | --- | --- |
 | `qr-ultra` | camera | Not built | Always disabled |
-| `qr-dense` | camera | Not built | Always disabled |
+| `qr-dense` | camera | Fountain+QR v17, 512-byte blocks, 9 FPS (experimental) | Camera >=30 FPS and display ~60 Hz |
 | `qr-fast` | camera | Fountain+QR v13, 320-byte blocks, 7 FPS | Camera >=30 FPS and display >=50 Hz |
 | `qr-standard` | camera | Fountain+QR v13, 280-byte blocks, 5 FPS | Camera present |
-| `audio-turbo` | audio | Not built | Always disabled |
+| `audio-turbo` | audio | Existing 900-byte OFDM modem with 40 ms frame gap (experimental) | Android >=8, >=4 cores, native OFDM and PCM 48 kHz |
 | `audio-ofdm` | audio | Cyrinx OFDM 900-byte blocks | PCM 48 kHz input/output and native OFDM init |
 | `audio-audible` | audio | GGWave audible 100-byte blocks | PCM 48 kHz input/output |
 | `audio-ultrasound` | audio | GGWave high-frequency 100-byte blocks | PCM 48 kHz + near-ultrasound hardware properties |
@@ -62,10 +67,12 @@ Do not send sensitive documents through these one-way physical modes.
 ### What remains
 
 - Real hardware soak/roundtrip tests, J7 Android 6 and modern Android phone
-- Measured goodput and loss tracking per codec/device pair
+- Received goodput and valid/rejected frame counts now appear after a completed
+  transfer; missing airborne frames cannot be counted without an agreed
+  sequence model. Record these metrics on both Android 6 and modern phones.
 - User-permitted persistence of a previously validated (rather than merely
   detected) mode
-- Fast camera scanner and high-density QR, new OFDM profiles, real negotiation
+- High-speed native camera decoder, alternative QR densities, new OFDM modulation, real negotiation
   (which is impossible without a reverse channel)
 
 ## Manual smoke checks
