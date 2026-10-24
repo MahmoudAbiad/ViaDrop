@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -7,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:open_filex/open_filex.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../core/manager.dart';
 import '../core/transfer.dart';
@@ -51,6 +53,7 @@ class _QrTransferPageState extends State<QrTransferPage> {
   @override
   void dispose() {
     _token?.cancelled = true;
+    unawaited(WakelockPlus.disable());
     _pass.dispose();
     _manager.dispose();
     super.dispose();
@@ -87,6 +90,7 @@ class _QrTransferPageState extends State<QrTransferPage> {
       _message = 'يُجهّز الملف المشفّر...';
     });
     File? sealed;
+    var wakeLockActive = false;
     try {
       _manager.begin();
       sealed = await _manager.prepare(_selected!, _pass.text);
@@ -95,6 +99,8 @@ class _QrTransferPageState extends State<QrTransferPage> {
       if (length > 512 * 1024) {
         throw const FormatException('النقل البصري الحالي مخصص للملفات الصغيرة حتى 512KB تقريباً بعد التشفير.');
       }
+      await WakelockPlus.enable();
+      wakeLockActive = true;
       _manager.update(Phase.transferring);
       setState(() {
         _sending = true;
@@ -115,6 +121,9 @@ class _QrTransferPageState extends State<QrTransferPage> {
     } catch (e) {
       if (mounted) setState(() => _message = 'تعذّر بدء البث: $e');
     } finally {
+      if (wakeLockActive) {
+        try { await WakelockPlus.disable(); } catch (_) {}
+      }
       if (sealed != null && await sealed.exists()) await sealed.delete();
       if (mounted) {
         setState(() {
@@ -135,9 +144,19 @@ class _QrTransferPageState extends State<QrTransferPage> {
     });
   }
 
-  void _startReceiving() {
+  Future<void> _startReceiving() async {
     if (!_ready || !_validPass) {
       setState(() => _message = 'اكتب نفس عبارة المرور المستخدمة لدى المرسل (12 حرفاً على الأقل).');
+      return;
+    }
+    try {
+      await WakelockPlus.enable();
+    } catch (e) {
+      if (mounted) setState(() => _message = 'تعذر إبقاء الشاشة نشطة: $e');
+      return;
+    }
+    if (!mounted) {
+      await WakelockPlus.disable();
       return;
     }
     _manager.begin();
@@ -192,6 +211,7 @@ class _QrTransferPageState extends State<QrTransferPage> {
           }
         } finally {
           if (await encrypted.exists()) await encrypted.delete();
+          try { await WakelockPlus.disable(); } catch (_) {}
           if (mounted) setState(() => _finalizing = false);
         }
         return;
@@ -203,6 +223,7 @@ class _QrTransferPageState extends State<QrTransferPage> {
             _message = 'فشل التحقق من الاستقبال: $e';
           });
         }
+        try { await WakelockPlus.disable(); } catch (_) {}
         return;
       }
     }
@@ -271,7 +292,11 @@ class _QrTransferPageState extends State<QrTransferPage> {
                 child: MobileScanner(onDetect: _scan),
               )),
             if (_receiving)
-              TextButton(onPressed: () => setState(() => _receiving = false),
+              TextButton(
+                onPressed: () async {
+                  setState(() => _receiving = false);
+                  try { await WakelockPlus.disable(); } catch (_) {}
+                },
                 child: const Text('إيقاف المسح')),
             if (_receiving || _finalizing)
               LinearProgressIndicator(value: _progress),
