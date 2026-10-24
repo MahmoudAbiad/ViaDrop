@@ -33,6 +33,17 @@ Current physical-channel limits: QR 512 KiB encrypted; audio 48 KiB input and
 physical channel has a receiver-completion acknowledgement; stop the repeating
 broadcast after verifying success on the receiving phone.
 
+## Transfer mode selection
+
+Camera and audio screens now show device-checked profile dropdowns, ordered by
+expected throughput. Implemented modes are enabled only after local capability
+checks; planned high-density QR/OFDM modes remain disabled. The selector controls
+the real QR frame size/speed or acoustic codec, and a VDS3 one-way start packet
+includes the profile ID. Both devices must select the same profile; the receiver
+rejects a mismatched start (no hidden fallback or acoustic acknowledgement).
+A local hardware probe is **not** a two-phone transfer test. See
+[Physical profile documentation](docs/PHYSICAL_PROFILES.md).
+
 ## Build and validation
 
 GitHub Actions on `main` runs tests, static analysis and APK builds:
