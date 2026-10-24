@@ -43,7 +43,12 @@ jobs:
               f'    <uses-permission android:name="android.permission.{p}" />\n'
               for p in permissions
           )
-          text = text.replace('<application', additions + '    <application', 1)
+          # LAN uses local HTTP solely as a carrier for authenticated VDP1
+          # ciphertext. Android 9+ otherwise blocks cleartext HTTP by default.
+          # Production should migrate to scoped network-security configuration
+          # or TLS; this change is for the experimental Android build.
+          text = text.replace('<application', additions +
+              '    <application android:usesCleartextTraffic="true"', 1)
           manifest.write_text(text)
           PY
       - name: Resolve Flutter dependencies
