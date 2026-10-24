@@ -11,6 +11,8 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import '../core/audio_estimate.dart';
 import '../core/manager.dart';
 import '../core/one_way_session.dart';
+import '../core/physical_profiles.dart';
+import '../widgets/physical_profile_selector.dart';
 import '../core/transfer.dart';
 import '../engines/native.dart';
 import '../engines/physical.dart';
@@ -42,8 +44,9 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
   bool _listenStopping = false;
   bool _sending = false;
   bool _finalizing = false;
-  bool _highFrequency = false;
-  bool _fastAudio = true;
+  PhysicalCapabilities _capabilities = const PhysicalCapabilities.unavailable();
+  String? _profileId;
+  bool _probing = true;
   bool _sendMode = true;
   double _progress = 0;
   String _status = 'استقبال صوتي صامت: يبدأ تلقائياً عند وصول رسالة البدء.';
@@ -54,12 +57,41 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
   @override
   void initState() {
     super.initState();
+    unawaited(_probeCapabilities());
     _manager.initialize().then((_) {
       if (mounted) setState(() => _ready = true);
     }).catchError((Object e) {
       _show('فشل التهيئة: $e');
     });
   }
+
+  Future<void> _probeCapabilities() async {
+    if (mounted) setState(() => _probing = true);
+    PhysicalCapabilities result;
+    try {
+      result = PhysicalCapabilities.fromMap(
+        await NativeBridge.probePhysicalCapabilities(),
+      );
+    } catch (_) {
+      result = const PhysicalCapabilities.unavailable();
+    }
+    if (!mounted) return;
+    setState(() {
+      _capabilities = result;
+      final current = _profileId == null
+          ? null : physicalProfileById(_profileId!);
+      if (current == null || !result.availability(current).enabled) {
+        _profileId = result.recommended(PhysicalMedium.audio)?.id;
+      }
+      _probing = false;
+    });
+  }
+
+  PhysicalProfile? get _profile =>
+      _profileId == null ? null : physicalProfileById(_profileId!);
+
+  bool get _profileSupported =>
+      _profile != null && _capabilities.availability(_profile!).enabled;
 
   void _show(String message) {
     if (mounted) setState(() => _status = message);
@@ -93,14 +125,15 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
 
   /// The sender broadcasts the start packet; no answer is expected.
   Future<void> _startSend() async {
-    if (!_ready || _active) return;
+    if (!_ready || _active || !_profileSupported) return;
     if (_text.text.trim().isEmpty && _source == null) {
       _show('اكتب نصاً أو اختر ملفاً أولاً.');
       return;
     }
+    final profile = _profile!;
     final token = CancelToken();
     _sendToken = token;
-    final session = OneWaySession.create();
+    final session = OneWaySession.create(profileId: profile.id);
     _session = session;
     var wakeLockActive = false;
     File? encrypted;
@@ -149,10 +182,10 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
             token.check();
             await Future<void>.delayed(const Duration(milliseconds: 250));
           }
-          await NativeBridge.play(packet, _highFrequency, fast: _fastAudio);
+          await NativeBridge.play(packet, profile.audioHigh, fast: profile.audioFast);
         },
         stopListening: NativeBridge.stopAudio,
-      )..audioBlockLength = _fastAudio ? 900 : 100;
+      )..audioBlockLength = profile.audioBlockBytes;
       await engine.send(encrypted, null, token, (sent, total) {
         if (mounted && total > 0) {
           setState(() => _progress = ((sent % total) / total).clamp(0, 1));
@@ -183,8 +216,8 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
   }
 
   Future<void> _startReceive() async {
-    if (!_ready || _active) {
-      _show('الجهاز مشغول بجلسة صوتية أخرى.');
+    if (!_ready || _active || !_profileSupported) {
+      _show('الجهاز مشغول أو التقنية غير مدعومة.');
       return;
     }
     setState(() => _listenStarting = true);
@@ -211,7 +244,7 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
         _progress = 0;
         _status = 'نستمع فقط. اضغط إرسال على الهاتف الثاني.';
       });
-      await NativeBridge.listen(fast: _fastAudio);
+      await NativeBridge.listen(fast: _profile!.audioFast);
       if (!mounted || !_receiving) {
         await NativeBridge.stopAudio();
       }
@@ -241,6 +274,15 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
       final incoming = OneWaySession.parse(text);
       if (incoming == null) return;
       if (_session == null) {
+        final other = physicalProfileById(incoming.profileId);
+        if (other?.medium != PhysicalMedium.audio ||
+            incoming.profileId != _profileId || !_profileSupported) {
+          unawaited(_failReceive(
+            'المرسل يستخدم ${other?.title ?? incoming.profileId}. '
+            'اختر نفس التقنية من القائمة في الجهازين ثم أعد المحاولة.',
+          ));
+          return;
+        }
         _session = incoming;
         _decoder = PhysicalDecoder(
           64 * 1024, expectedSessionId: incoming.sessionId,
@@ -332,7 +374,9 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
   Widget build(BuildContext context) {
     final bytes = _text.text.trim().isNotEmpty
         ? utf8.encode(_text.text).length : _sourceBytes;
-    final estimate = AudioEstimate.forInputBytes(bytes, fast: _fastAudio);
+    final estimate = AudioEstimate.forInputBytes(
+      bytes, fast: _profile?.audioFast ?? false,
+    );
     return Scaffold(
       appBar: AppBar(title: const Text('ViaDrop • Audio')),
       body: SafeArea(child: ListView(
@@ -356,11 +400,17 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
           const SizedBox(height: 12),
           const Text('المستقبل يستمع بصمت حتى يسمع رسالة بدء ثم يستقبل الملف.'),
           const SizedBox(height: 12),
-          SwitchListTile(
-            title: const Text('صوت سريع OFDM • تجريبي'),
-            subtitle: const Text('فعّله على الجهازين. لم يُختبر بعد على هاتفين.'),
-            value: _fastAudio,
-            onChanged: _active ? null : (v) => setState(() => _fastAudio = v),
+          PhysicalProfileSelector(
+            medium: PhysicalMedium.audio,
+            capabilities: _capabilities,
+            selectedId: _profileId,
+            enabled: !_active,
+            checking: _probing,
+            onRefresh: () => unawaited(_probeCapabilities()),
+            onChanged: (id) => setState(() {
+              _profileId = id;
+              _status = 'اضبط التقنية نفسها على الهاتف الثاني ثم ابدأ.';
+            }),
           ),
           if (_sendMode) ...[
             TextField(
@@ -387,16 +437,10 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
                     : 'تقدير للبيانات: ${estimate.lowerMinutes}–${estimate.upperMinutes} دقيقة، '
                       'بالإضافة إلى رسائل البدء وفقد الإشارات.'),
               ),
-            SwitchListTile(
-              title: const Text('الترددات العالية (الوضع البطيء)'),
-              subtitle: const Text('قد لا تدعمها بعض السماعات والميكروفونات.'),
-              value: _highFrequency,
-              onChanged: _active || _fastAudio ? null :
-                  (v) => setState(() => _highFrequency = v),
-            ),
-            if (!_sending)
+             if (!_sending)
               FilledButton.icon(
-                onPressed: _ready && !_active && bytes <= 48 * 1024 &&
+                onPressed: _ready && !_active && _profileSupported &&
+                    bytes <= 48 * 1024 &&
                     (_text.text.trim().isNotEmpty || _source != null)
                     ? _startSend : null,
                 icon: const Icon(Icons.volume_up),
@@ -411,7 +455,7 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
           ] else ...[
             if (!_receiving && !_finalizing)
               FilledButton.icon(
-                onPressed: _ready && !_active ? _startReceive : null,
+                onPressed: _ready && !_active && _profileSupported ? _startReceive : null,
                 icon: const Icon(Icons.mic),
                 label: const Text('استقبال • استماع صامت'),
               ),
