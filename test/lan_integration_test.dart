@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:viadrop/core/transfer.dart';
@@ -124,4 +125,27 @@ void main() {
       await temporary.delete(recursive: true);
     }
   }, timeout: const Timeout(Duration(seconds: 20)));
+
+  test('LAN discovery rejects self, public and malformed announcements', () {
+    final message = utf8.encode('{"v":"VD1"}');
+    const ownAddresses = <String>{'192.168.1.20', '10.0.0.10'};
+    final validPeer = parseLanAnnouncement(
+      message, InternetAddress('192.168.1.21'), ownAddresses);
+    expect(validPeer, isNotNull);
+    expect(validPeer!.id, '192.168.1.21');
+    expect(parseLanAnnouncement(
+      message, InternetAddress('192.168.1.20'), ownAddresses), isNull);
+    expect(parseLanAnnouncement(
+      message, InternetAddress('10.0.0.10'), ownAddresses), isNull);
+    expect(parseLanAnnouncement(
+      message, InternetAddress('8.8.8.8'), ownAddresses), isNull);
+    expect(parseLanAnnouncement(
+      message, InternetAddress.loopbackIPv4, ownAddresses), isNull);
+    expect(parseLanAnnouncement(
+      utf8.encode('{"v":"different"}'), InternetAddress('192.168.1.21'), ownAddresses), isNull);
+    expect(parseLanAnnouncement(
+      utf8.encode('not json'), InternetAddress('192.168.1.21'), ownAddresses), isNull);
+    expect(parseLanAnnouncement(
+      List<int>.filled(257, 65), InternetAddress('192.168.1.21'), ownAddresses), isNull);
+  });
 }

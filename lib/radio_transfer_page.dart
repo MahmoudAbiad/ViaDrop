@@ -239,6 +239,15 @@ class _RadioTransferPageState extends State<RadioTransferPage> {
 
   Future<void> _refresh() async {
     if (!_ready || _engine == null) return;
+    if (_wifi) {
+      try {
+        await (_engine! as LanEngine).refreshDiscovery();
+        _show('تم بث طلب الاكتشاف. تأكد من أن الجهازين على نفس الشبكة.');
+      } catch (e) {
+        _show('تعذّر تحديث اكتشاف Wi-Fi: $e');
+      }
+      return;
+    }
     if (!_wifi) {
       try {
         final peers = await _engine!.discover().toList();
