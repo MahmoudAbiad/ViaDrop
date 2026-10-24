@@ -29,12 +29,14 @@ class PhysicalDecoder {
          ? 0 : completedBytes * 1000 / (_rxClock.elapsedMilliseconds * 1024);
 
  Uint8List? add(Uint8List bytes) {
-  if(bytes.length>1100) {rejectedFrames++;return null;}
+  // QR-v40 optical frames carry up to 2400 block bytes plus 32 bytes
+  // framing. Keep a strict input bound before doing CRC/fountain work.
+  if(bytes.length>2600) {rejectedFrames++;return null;}
   final p=parseFrame(bytes);
   if(p==null) {rejectedFrames++;return null;}
   final h=p.header;
   if(h.protocolVersion!=2||h.totalLength>maxBytes||
-     h.blockLength>1024||h.blockCount>20000||
+     h.blockLength>2400||h.blockCount>20000||
      (expectedSessionId!=null&&h.sessionId!=expectedSessionId)) {
     rejectedFrames++;
     return null;
