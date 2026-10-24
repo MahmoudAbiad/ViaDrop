@@ -56,20 +56,34 @@ class MainActivity:FlutterActivity(){
     "btSend"->workers.execute{try{sendBluetooth(call.argument<String>("address")!!,call.argument<String>("path")!!);done()}catch(e:Exception){fail(e)}}
     "audioListen"->try{listenAudio();done()}catch(e:Exception){fail(e)}
     "audioStop"->{stopAudio();done()}
-    "audioPlay"->workers.execute{try{playAudio(call.argument<ByteArray>("data")!!,call.argument<Boolean>("high")==true);done()}catch(e:Exception){fail(e)}}
+    "audioPlay"->{
+     // Capture the generation before queuing. A queued playback task must
+     // not become valid again if Stop happens before its worker starts.
+     val data=call.argument<ByteArray>("data")
+     val high=call.argument<Boolean>("high")==true
+     val generation=audioGeneration
+     workers.execute{
+      try{
+       if(data==null)throw IllegalArgumentException("Missing audio data")
+       playAudio(data,high,generation)
+       done()
+      }catch(e:Exception){fail(e)}
+     }
+    }
     "sharedFiles"->workers.execute{try{done(importShared(intent));intent=Intent()}catch(e:Exception){fail(e)}}
     else->result.notImplemented()
    }
   }
  }
- private fun playAudio(data:ByteArray,high:Boolean){
-  val generation=audioGeneration;val h=waveInit();if(h<0)throw IOException("Audio initialization failed")
+ private fun playAudio(data:ByteArray,high:Boolean,generation:Int){
+  if(generation!=audioGeneration)return
+  val h=waveInit();if(h<0)throw IOException("Audio initialization failed")
   try{
    val pcm=waveEncode(h,data,high)?:throw IOException("Encoding failed");if(generation!=audioGeneration)return
    val min=AudioTrack.getMinBufferSize(48000,AudioFormat.CHANNEL_OUT_MONO,AudioFormat.ENCODING_PCM_16BIT)
    val player=AudioTrack.Builder().setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build()).setAudioFormat(AudioFormat.Builder().setSampleRate(48000).setChannelMask(AudioFormat.CHANNEL_OUT_MONO).setEncoding(AudioFormat.ENCODING_PCM_16BIT).build()).setBufferSizeInBytes(maxOf(min,8192)).setTransferMode(AudioTrack.MODE_STREAM).build()
    track=player
-   try{player.play();var offset=0;while(offset<pcm.size&&generation==audioGeneration){val n=player.write(pcm,offset,minOf(4096,pcm.size-offset));if(n<=0)throw IOException("Audio output failed");offset+=n};while(generation==audioGeneration&&player.playbackHeadPosition<pcm.size/2){Thread.sleep(20)}}
+   try{if(generation!=audioGeneration)return;player.play();var offset=0;while(offset<pcm.size&&generation==audioGeneration){val n=player.write(pcm,offset,minOf(4096,pcm.size-offset));if(n<=0)throw IOException("Audio output failed");offset+=n};while(generation==audioGeneration&&player.playbackHeadPosition<pcm.size/2){Thread.sleep(20)}}
    finally{try{player.stop()}catch(_:Exception){};player.release();if(track===player)track=null}
   }finally{waveFree(h)}
  }
