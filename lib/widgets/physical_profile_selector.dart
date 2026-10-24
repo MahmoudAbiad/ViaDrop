@@ -35,7 +35,8 @@ class PhysicalProfileSelector extends StatelessWidget {
       children: [
         DropdownButtonFormField<String>(
           key: ValueKey('${medium.name}-$selectedId'),
-          initialValue: candidates.any((p) => p.id == selectedId &&
+          // ignore: deprecated_member_use
+          value: candidates.any((p) => p.id == selectedId &&
               capabilities.availability(p).enabled) ? selectedId : null,
           decoration: const InputDecoration(
             labelText: 'تقنية النقل',
