@@ -1,0 +1,99 @@
+name: ViaDrop V1 Legacy — Android 6 ARM32
+on:
+  push:
+    branches: [recovery-dev]
+  workflow_dispatch:
+jobs:
+  android6-arm32-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    steps:
+      - name: Checkout development branch
+        uses: actions/checkout@v4
+      - name: Install legacy Flutter supporting Android 6
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.32.8'
+          channel: stable
+          cache: true
+      - name: Use Android 6 compatible dependency constraints
+        run: |
+          cp ci/pubspec_android6.yaml pubspec.yaml
+          rm -f pubspec.lock
+      - name: Recreate Android 6-compatible scaffold
+        run: flutter create --no-pub --platforms=android --org app.viadrop --project-name viadrop .
+      - name: Configure native audio and Android 6 permissions
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          gradle = Path('android/app/build.gradle.kts')
+          text = gradle.read_text()
+          if 'externalNativeBuild' not in text:
+              text = text.replace('android {', """android {
+              externalNativeBuild {
+                  cmake {
+                      path = file("src/main/cpp/CMakeLists.txt")
+                  }
+              }
+          """, 1)
+          if 'minSdk = flutter.minSdkVersion' not in text:
+              raise SystemExit('Missing Gradle minSdk placeholder')
+          text = text.replace('minSdk = flutter.minSdkVersion', 'minSdk = 23')
+          gradle.write_text(text)
+          manifest = Path('android/app/src/main/AndroidManifest.xml')
+          text = manifest.read_text()
+          permissions = [
+              'CAMERA', 'RECORD_AUDIO',
+              'INTERNET', 'ACCESS_NETWORK_STATE', 'ACCESS_WIFI_STATE',
+              'CHANGE_WIFI_MULTICAST_STATE',
+              'BLUETOOTH_CONNECT', 'BLUETOOTH_SCAN',
+              'BLUETOOTH', 'BLUETOOTH_ADMIN'
+          ]
+          additions = ''.join(
+              f'    <uses-permission android:name="android.permission.{p}" />\n'
+              for p in permissions
+          )
+          text = text.replace('<application', additions +
+              '    <application android:usesCleartextTraffic="true"', 1)
+          manifest.write_text(text)
+          PY
+      - name: Resolve legacy Flutter dependencies
+        run: flutter pub get
+      - name: Remove generated starter widget test
+        run: |
+          if [ -f test/widget_test.dart ] && grep -q 'MyApp()' test/widget_test.dart; then
+            rm test/widget_test.dart
+          fi
+      - name: Run Dart tests
+        run: flutter test
+      - name: Static analysis
+        run: flutter analyze --no-fatal-infos
+      - name: Build legacy Android 6 ARM32 Release APK
+        run: flutter build apk --release --target-platform android-arm --split-per-abi --tree-shake-icons
+      - name: Verify legacy APK compatibility and size
+        run: |
+          set -euo pipefail
+          APK=build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
+          test -s "$APK"
+          AAPT="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)/aapt"
+          "$AAPT" dump badging "$APK" > /tmp/viadrop-legacy-badging.txt
+          grep -Fx "sdkVersion:'23'" /tmp/viadrop-legacy-badging.txt
+          unzip -Z1 "$APK" | grep -Fx 'lib/armeabi-v7a/libflutter.so'
+          unzip -Z1 "$APK" | grep -Fx 'lib/armeabi-v7a/libviadrop_audio.so'
+          if unzip -Z1 "$APK" | grep -Eq '^lib/(arm64-v8a|x86|x86_64)/'; then
+            echo 'Unexpected architecture in Android 6 ARM32 APK' >&2
+            exit 1
+          fi
+          mkdir -p dist
+          cp "$APK" dist/ViaDrop-V1-Android6-J7-ARM32-release.apk
+          size=$(stat -c%s "$APK")
+          echo "Android 6 ARM32 Release APK size: $size bytes"
+          echo "### ViaDrop Legacy — Android 6 ARM32" >> "$GITHUB_STEP_SUMMARY"
+          echo "APK size $size bytes; minSdk 23; architecture armeabi-v7a; legacy Flutter 3.32.8." >> "$GITHUB_STEP_SUMMARY"
+          echo "Internal test signing only; Android 6 security support has ended." >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload legacy Android 6 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ViaDrop-V1-Android6-J7-ARM32-release
+          path: dist/ViaDrop-V1-Android6-J7-ARM32-release.apk
+          if-no-files-found: error
