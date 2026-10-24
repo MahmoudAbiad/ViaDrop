@@ -1,0 +1,76 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:viadrop/core/one_way_session.dart';
+import 'package:viadrop/core/physical_profiles.dart';
+
+void main() {
+  const modern = PhysicalCapabilities(
+    probeOk: true, camera: true, cameraMaxFps: 60,
+    displayHz: 60, microphone: true,
+    audioInput48k: true, audioOutput48k: true,
+    ofdmNative: true,
+    ultrasoundInput: false, ultrasoundOutput: false,
+  );
+  const older = PhysicalCapabilities(
+    probeOk: true, camera: true, cameraMaxFps: 15,
+    displayHz: 60, microphone: true,
+    audioInput48k: true, audioOutput48k: true,
+    ofdmNative: false,
+    ultrasoundInput: false, ultrasoundOutput: false,
+  );
+
+  test('only implemented and provisionally supported modes are selectable', () {
+    expect(modern.recommended(PhysicalMedium.qr)?.id, 'qr-fast');
+    expect(modern.recommended(PhysicalMedium.audio)?.id, 'audio-ofdm');
+    expect(older.recommended(PhysicalMedium.qr)?.id, 'qr-standard');
+    expect(older.recommended(PhysicalMedium.audio)?.id, 'audio-audible');
+
+    for (final profile in physicalProfiles.where((p) => !p.implemented)) {
+      expect(modern.availability(profile).enabled, isFalse);
+    }
+    expect(modern.availability(physicalProfileById('audio-ultrasound')!).enabled,
+        isFalse);
+    expect(older.availability(physicalProfileById('qr-fast')!).enabled, isFalse);
+    expect(older.availability(physicalProfileById('audio-ofdm')!).enabled, isFalse);
+  });
+
+  test('unknown or failed probes never enable a transfer mode', () {
+    const failed = PhysicalCapabilities.unavailable();
+    for (final profile in physicalProfiles) {
+      expect(failed.availability(profile).enabled, isFalse);
+    }
+    expect(failed.recommended(PhysicalMedium.audio), isNull);
+    expect(failed.recommended(PhysicalMedium.qr), isNull);
+  });
+
+  test('native probe maps do not treat absent fields as device support', () {
+    final caps = PhysicalCapabilities.fromMap({
+      'probeOk': true, 'camera': true,
+      'cameraMaxFps': 30, 'displayHz': 60.0,
+    });
+    expect(caps.recommended(PhysicalMedium.qr)?.id, 'qr-fast');
+    expect(caps.recommended(PhysicalMedium.audio), isNull);
+  });
+
+  test('outgoing announcement identifies exact codec on both ends', () {
+    for (final profile in physicalProfiles.where((p) => p.implemented)) {
+      final sent = OneWaySession.create(profileId: profile.id);
+      final received = OneWaySession.parse(sent.announcement);
+      expect(received, isNotNull);
+      expect(received!.profileId, profile.id);
+      expect(received.sessionId, sent.sessionId);
+      expect(received.passphrase, sent.passphrase);
+      expect(sent.audioAnnouncement.length, lessThanOrEqualTo(140));
+    }
+    final fast = OneWaySession.create(profileId: 'qr-fast');
+    expect(OneWaySession.parse(fast.announcement)!.profileId,
+        isNot('qr-standard'));
+    expect(OneWaySession.parse(
+      fast.announcement.replaceFirst('qr-fast', 'audio-turbo'),
+    ), isNull);
+    expect(OneWaySession.parse(
+      fast.announcement.replaceFirst('VDS3:', 'VDS2:'),
+    ), isNull);
+    expect(() => OneWaySession.create(profileId: 'qr-dense'),
+        throwsArgumentError);
+  });
+}
