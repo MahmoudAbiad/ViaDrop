@@ -370,7 +370,7 @@ class _QrTransferPageState extends State<QrTransferPage> {
   }
 
   Widget _scanner() {
-    final isStreaming = _scanData && (_profile?.qrFps ?? 0) >= 9;
+    final isStreaming = (_profile?.qrFps ?? 0) >= 9;
     return SizedBox(
       height: isStreaming ? MediaQuery.sizeOf(context).width - 32 : 320,
       child: ClipRRect(
