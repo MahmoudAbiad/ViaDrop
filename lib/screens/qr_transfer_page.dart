@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -173,59 +172,57 @@ class _QrTransferPageState extends State<QrTransferPage> {
 
   Future<void> _scan(BarcodeCapture capture) async {
     if (!_receiving || _finalizing) return;
-    for (final barcode in capture.barcodes) {
-      final text = barcode.rawValue;
-      if (text == null || !text.startsWith('VDQR:')) continue;
-      Uint8List bytes;
-      try {
-        bytes = base64Url.decode(text.substring(5));
-      } catch (_) {
-        continue;
-      }
-      try {
-        final complete = _decoder.add(bytes);
-        if (complete == null) {
-          final progress = _decoder.progress;
-          if ((progress - _progress).abs() >= 0.01 && mounted) {
-            setState(() => _progress = progress);
-          }
-          return;
+    try {
+      // Process the entire batch before returning. The previous callback
+      // dropped later QR frames whenever the first frame was incomplete.
+      final complete = decodeQrCapture(
+        _decoder,
+        capture.barcodes.map((barcode) => barcode.rawValue),
+      );
+      if (complete == null) {
+        final progress = _decoder.progress;
+        if ((progress - _progress).abs() >= 0.01 && mounted) {
+          setState(() => _progress = progress);
         }
-        _finalizing = true;
+        return;
+      }
+      _finalizing = true;
+      if (mounted) {
         setState(() {
           _receiving = false;
           _progress = 1;
           _message = 'اكتملت الإطارات، جارٍ فك التشفير والتحقق...';
         });
-        final encrypted = File(
-          _manager.work.path + '/qr-' + DateTime.now().microsecondsSinceEpoch.toString() + '.vdp',
-        );
+      }
+      final encrypted = File(
+        _manager.work.path + '/qr-' +
+            DateTime.now().microsecondsSinceEpoch.toString() + '.vdp',
+      );
+      try {
         await encrypted.writeAsBytes(complete, flush: true);
-        try {
-          final result = await _manager.accept(encrypted, _pass.text, Channel.qr);
-          if (mounted) {
-            setState(() {
-              _received = result;
-              _message = 'تم استلام الملف والتحقق منه بنجاح.';
-            });
-          }
-        } finally {
-          if (await encrypted.exists()) await encrypted.delete();
-          try { await WakelockPlus.disable(); } catch (_) {}
-          if (mounted) setState(() => _finalizing = false);
-        }
-        return;
-      } catch (e) {
+        final result = await _manager.accept(
+          encrypted, _pass.text, Channel.qr,
+        );
         if (mounted) {
           setState(() {
-            _receiving = false;
-            _finalizing = false;
-            _message = 'فشل التحقق من الاستقبال: $e';
+            _received = result;
+            _message = 'تم استلام الملف والتحقق منه بنجاح.';
           });
         }
+      } finally {
+        if (await encrypted.exists()) await encrypted.delete();
         try { await WakelockPlus.disable(); } catch (_) {}
-        return;
+        if (mounted) setState(() => _finalizing = false);
       }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _receiving = false;
+          _finalizing = false;
+          _message = 'فشل التحقق من الاستقبال: $e';
+        });
+      }
+      try { await WakelockPlus.disable(); } catch (_) {}
     }
   }
 

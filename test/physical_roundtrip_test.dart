@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -132,4 +133,40 @@ void main() {
       }
     }, timeout: const Timeout(Duration(seconds: 40)));
   }
+
+  test('QR camera capture decodes every barcode in the batch', () {
+    final payload = Uint8List.fromList(
+      List<int>.generate(120, (i) => (i * 7 + 3) % 256),
+    );
+    const sessionId = 125;
+    final encoder = LTEncoder(
+      payload: payload,
+      blockLength: 60,
+      sessionId: sessionId,
+    );
+    String qrFrame(int sequence) => 'VDQR:${base64UrlEncode(packFrame(
+      FrameHeader(
+        sessionId: sessionId,
+        sequence: sequence,
+        blockCount: encoder.blockCount,
+        blockLength: 60,
+        totalLength: payload.length,
+        payloadChecksum: crc32(payload),
+      ),
+      encoder.encode(sequence),
+    ))}';
+
+    final decoder = PhysicalDecoder(1024);
+    // One camera capture can contain two useful QR codes. In the previous
+    // implementation the callback returned after the first incomplete frame.
+    final received = decodeQrCapture(decoder, [
+      null,
+      'unrelated barcode',
+      'VDQR:!!!',
+      qrFrame(0),
+      qrFrame(1),
+    ]);
+    expect(received, isNotNull);
+    expect(received, orderedEquals(payload));
+  });
 }

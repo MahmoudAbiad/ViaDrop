@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import '../core/transfer.dart';
@@ -16,6 +17,23 @@ class PhysicalDecoder {
   decoder!.addFrame(h.sequence,p.block);final result=decoder!.assemble();
   if(result!=null&&crc32(result)!=h.payloadChecksum)throw const FormatException('Payload checksum failed');return result;
  }
+}
+/// Consume every QR code reported in one camera capture. The scanner may
+/// report multiple codes at once, and a single fountain frame rarely finishes
+/// a transfer. Invalid or unrelated QR strings must not block valid frames.
+Uint8List? decodeQrCapture(PhysicalDecoder decoder, Iterable<String?> rawValues) {
+ for(final text in rawValues) {
+  if(text==null||!text.startsWith('VDQR:'))continue;
+  Uint8List packet;
+  try {
+   packet=base64Url.decode(text.substring(5));
+  } on FormatException {
+   continue;
+  }
+  final complete=decoder.add(packet);
+  if(complete!=null)return complete;
+ }
+ return null;
 }
 class PhysicalEngine extends TransferEngine {
  PhysicalEngine(this.channel,{required this.emit,this.startListening,this.stopListening});
