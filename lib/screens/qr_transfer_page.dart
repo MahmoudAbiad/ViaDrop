@@ -10,13 +10,13 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../core/manager.dart';
-import '../core/qr_pairing.dart';
+import '../core/one_way_session.dart';
 import '../core/transfer.dart';
 import '../engines/physical.dart';
 import '../engines/qr_codec.dart';
 
-/// Independent optical data transport: two QR scans pair devices using
-/// ephemeral X25519 keys. Actual file bytes are sent through animated QRs.
+/// Strictly one-way optical transport: static invitation, then animated data.
+/// The receiver scans once; it never displays a reply QR.
 class QrTransferPage extends StatefulWidget {
   const QrTransferPage({super.key});
 
@@ -26,7 +26,7 @@ class QrTransferPage extends StatefulWidget {
 
 class _QrTransferPageState extends State<QrTransferPage> {
   final _manager = TransferManager();
-  OpticalPairing? _pairing;
+  OneWaySession? _session;
   PhysicalDecoder _decoder = PhysicalDecoder(600 * 1024);
   File? _selected;
   File? _received;
@@ -35,29 +35,27 @@ class _QrTransferPageState extends State<QrTransferPage> {
   bool _busy = false;
   bool _sendMode = true;
   bool _showInvite = false;
-  bool _scanReply = false;
   bool _scanInvite = false;
-  bool _showReply = false;
   bool _scanData = false;
   bool _sending = false;
   bool _finalizing = false;
   bool _fastMode = false;
   bool _scanBusy = false;
-  bool _confirmSend = false;
+  int _countdown = 0;
   String? _frame;
-  String _message = 'الإرسال عبر الشاشة والكاميرا بدون إنترنت أو كلمة مرور.';
+  String _message = 'انقل الملفات بالكاميرا فقط، دون شبكة أو مسح متبادل.';
   double _progress = 0;
 
-  bool get _active => _busy || _showInvite || _scanReply || _scanInvite ||
-      _showReply || _scanData || _sending || _finalizing || _confirmSend;
+  bool get _active => _busy || _showInvite || _scanInvite ||
+      _scanData || _sending || _finalizing;
 
   @override
   void initState() {
     super.initState();
     _manager.initialize().then((_) {
       if (mounted) setState(() => _ready = true);
-    }).catchError((Object error) {
-      if (mounted) setState(() => _message = 'فشل التهيئة: $error');
+    }).catchError((Object e) {
+      if (mounted) setState(() => _message = 'فشل التهيئة: $e');
     });
   }
 
@@ -78,33 +76,30 @@ class _QrTransferPageState extends State<QrTransferPage> {
       if (path == null) throw const FileSystemException('مسار الملف غير متاح');
       setState(() {
         _selected = File(path);
-        _message = 'اضغط إنشاء اقتران وأرِ الرمز للهاتف المستقبل.';
+        _message = 'الملف جاهز. اعرض رمز البداية للمستقبل.';
       });
     } catch (error) {
       if (mounted) setState(() => _message = 'خطأ اختيار الملف: $error');
     }
   }
 
-  Future<void> _beginInvite() async {
-    if (!_ready || _active || _selected == null) {
-      setState(() => _message = 'اختر ملفاً أولاً.');
-      return;
-    }
+  Future<void> _beginSend() async {
+    if (!_ready || _active || _selected == null) return;
     setState(() => _busy = true);
     try {
       await WakelockPlus.enable();
-      final pairing = await OpticalPairing.createSender();
       if (!mounted) {
         await WakelockPlus.disable();
         return;
       }
       setState(() {
-        _pairing = pairing;
+        _session = OneWaySession.create();
+        _received = null;
         _showInvite = true;
-        _message = '1/2: دع الهاتف الآخر يمسح رمز الاقتران الثابت.';
+        _message = 'امسح الرمز الثابت بالجهاز المستقبل، ثم اضغط بدء النقل.';
       });
     } catch (error) {
-      if (mounted) setState(() => _message = 'فشل إنشاء الاقتران: $error');
+      if (mounted) setState(() => _message = 'تعذر إنشاء الجلسة: $error');
       try { await WakelockPlus.disable(); } catch (_) {}
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -121,86 +116,65 @@ class _QrTransferPageState extends State<QrTransferPage> {
         return;
       }
       setState(() {
-        _pairing = null;
+        _session = null;
         _received = null;
+        _progress = 0;
         _scanInvite = true;
-        _message = '1/2: امسح رمز الاقتران المعروض على المرسل.';
+        _message = 'وجّه الكاميرا إلى رمز QR الثابت على جهاز المرسل.';
       });
     } catch (error) {
-      if (mounted) setState(() => _message = 'تعذر فتح الاقتران: $error');
+      if (mounted) setState(() => _message = 'تعذر بدء الاستقبال: $error');
       try { await WakelockPlus.disable(); } catch (_) {}
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
 
-  void _beginReplyScan() {
-    if (_pairing == null || !_showInvite) return;
-    setState(() {
-      _showInvite = false;
-      _scanReply = true;
-      _message = '2/2: امسح الآن رمز التأكيد الظاهر على الجهاز المستقبل.';
-    });
-  }
-
-  void _beginDataScan() {
-    final pair = _pairing;
-    if (pair == null || pair.passphrase == null || !_showReply) return;
-    _manager.begin();
-    _manager.update(Phase.waiting);
-    _decoder = PhysicalDecoder(
-      600 * 1024, expectedSessionId: pair.sessionId,
-    );
-    setState(() {
-      _showReply = false;
-      _scanData = true;
-      _progress = 0;
-      _message = 'الاقتران جاهز. وجّه الكاميرا إلى رموز الملف المتحركة.';
-    });
-  }
-
   Future<void> _transmit() async {
-    final pair = _pairing;
+    final session = _session;
     final file = _selected;
-    final password = pair?.passphrase;
-    if (pair == null || password == null || file == null || _sending) return;
+    if (!_showInvite || session == null || file == null || _sending) return;
     final token = CancelToken();
     _sendToken = token;
     setState(() {
+      _showInvite = false;
       _sending = true;
-      _busy = true;
       _progress = 0;
-      _message = 'اكتمل الاقتران. جارٍ تجهيز ملف مشفّر تلقائياً...';
+      _frame = null;
+      _message = 'جارٍ تجهيز الملف. ابقِ كاميرا المستقبل باتجاه الشاشة.';
     });
     File? encrypted;
     try {
       _manager.begin();
-      encrypted = await _manager.prepare(file, password);
-      if (token.cancelled) return;
+      encrypted = await _manager.prepare(file, session.passphrase);
+      token.check();
       if (await encrypted.length() > 512 * 1024) {
-        throw const FormatException(
-          'الملف أكبر من الحد الحالي للنقل بالكاميرا (512KB بعد التشفير).',
-        );
+        throw const FormatException('الملف أكبر من 512KB بعد التشفير.');
       }
+      for (var left = 3; left > 0; left--) {
+        token.check();
+        if (mounted) setState(() => _countdown = left);
+        await Future<void>.delayed(const Duration(seconds: 1));
+      }
+      token.check();
+      if (mounted) setState(() {
+        _countdown = 0;
+        _message = 'بث QR جارٍ؛ أوقفه بعد اكتمال استقبال الملف.';
+      });
       _manager.update(Phase.transferring);
-      if (mounted) {
-        setState(() => _message =
-          'أصبح الإرسال نشطاً. افتح مسح الملف في الهاتف المستقبل.');
-      }
       final engine = PhysicalEngine(
         Channel.qr,
-        sessionId: pair.sessionId,
+        sessionId: session.sessionId,
         emit: (Uint8List packet) async {
           if (!token.cancelled && mounted) {
             setState(() => _frame = encodeQrFrame(packet));
           }
         },
-      )
-        ..fps = _fastMode ? 7 : 5
-        ..blockLength = _fastMode ? 320 : 280;
+      )..fps = _fastMode ? 7 : 5
+       ..blockLength = _fastMode ? 320 : 280;
       await engine.send(encrypted, null, token, (_, __) {});
     } on TransferCancelled {
-      // User stopped the repeating QR broadcast.
+      if (mounted) setState(() => _message = 'تم إيقاف البث.');
     } catch (error) {
       if (mounted) setState(() => _message = 'فشل النقل البصري: $error');
     } finally {
@@ -210,8 +184,8 @@ class _QrTransferPageState extends State<QrTransferPage> {
       try { await WakelockPlus.disable(); } catch (_) {}
       if (mounted) setState(() {
         _frame = null;
+        _countdown = 0;
         _sending = false;
-        _busy = false;
       });
     }
   }
@@ -220,38 +194,29 @@ class _QrTransferPageState extends State<QrTransferPage> {
     if (_scanBusy || _finalizing || !mounted) return;
     _scanBusy = true;
     try {
-      final values = capture.barcodes.map((b) => b.rawValue).whereType<String>();
+      final values = capture.barcodes.map((b) => b.rawValue)
+          .whereType<String>();
       if (_scanInvite) {
         for (final value in values) {
-          if (!value.startsWith(OpticalPairing.invitePrefix)) continue;
-          final pair = await OpticalPairing.acceptInvitation(value);
-          if (pair != null && mounted && _scanInvite) {
-            setState(() {
-              _pairing = pair;
-              _scanInvite = false;
-              _showReply = true;
-              _message = 'تم مسح الاقتران. أعرض هذا الرمز للمرسل كي يؤكد الاتصال.';
-            });
-            return;
-          }
-        }
-      } else if (_scanReply) {
-        final pair = _pairing;
-        if (pair == null) return;
-        for (final value in values) {
-          if (!value.startsWith(OpticalPairing.replyPrefix)) continue;
-          if (await pair.acceptReply(value) && mounted && _scanReply) {
-            setState(() {
-              _scanReply = false;
-              _confirmSend = true;
-              _message = 'قارن بصمة الاقتران على الهاتفين قبل إرسال الملف.';
-            });
-            return;
-          }
+          final session = OneWaySession.parse(value);
+          if (session == null || !mounted || !_scanInvite) continue;
+          _manager.begin();
+          _manager.update(Phase.waiting);
+          _decoder = PhysicalDecoder(
+            600 * 1024, expectedSessionId: session.sessionId,
+          );
+          setState(() {
+            _session = session;
+            _scanInvite = false;
+            _scanData = true;
+            _progress = 0;
+            _message = 'وصلت رسالة البدء. انتظر الرموز المتحركة على نفس الشاشة.';
+          });
+          return;
         }
       } else if (_scanData) {
-        final complete = decodeQrCapture(_decoder, values);
-        if (complete == null) {
+        final result = decodeQrCapture(_decoder, values);
+        if (result == null) {
           final progress = _decoder.progress;
           if (mounted && (progress - _progress).abs() >= 0.01) {
             setState(() => _progress = progress);
@@ -262,18 +227,18 @@ class _QrTransferPageState extends State<QrTransferPage> {
         if (mounted) setState(() {
           _scanData = false;
           _progress = 1;
-          _message = 'اكتمل الاستقبال، جارٍ فك التشفير والتحقق...';
+          _message = 'اكتمل الاستقبال. جارٍ التحقق من الملف...';
         });
-        await _finishReceive(complete);
+        await _finishReceive(result);
       }
     } catch (error) {
       if (_decoder.header == null && _scanData) {
         if (mounted) setState(() {
           _progress = 0;
-          _message = 'إطارات غير صالحة؛ ما زلنا نستقبل الإرسال المقترن.';
+          _message = 'تجاهلنا إطارات غير صالحة. ما زلنا نستقبل.';
         });
-      } else {
-        if (mounted) setState(() => _message = 'خطأ أثناء المسح: $error');
+      } else if (mounted) {
+        setState(() => _message = 'خطأ أثناء المسح: $error');
       }
     } finally {
       _scanBusy = false;
@@ -281,20 +246,19 @@ class _QrTransferPageState extends State<QrTransferPage> {
   }
 
   Future<void> _finishReceive(Uint8List payload) async {
-    final pass = _pairing?.passphrase;
+    final password = _session?.passphrase;
     File? encrypted;
     try {
-      if (pass == null) throw StateError('اقتران غير صالح');
-      encrypted = File(_manager.work.path + '/qr-' +
-          DateTime.now().microsecondsSinceEpoch.toString() + '.vdp');
+      if (password == null) throw StateError('لم تصل رسالة البدء');
+      encrypted = File('${_manager.work.path}/qr-${DateTime.now().microsecondsSinceEpoch}.vdp');
       await encrypted.writeAsBytes(payload, flush: true);
-      final result = await _manager.accept(encrypted, pass, Channel.qr);
+      final received = await _manager.accept(encrypted, password, Channel.qr);
       if (mounted) setState(() {
-        _received = result;
-        _message = 'نجح الاستقبال وفك التشفير والتحقق من سلامة الملف.';
+        _received = received;
+        _message = 'تم استلام الملف والتحقق من سلامته بنجاح.';
       });
     } catch (error) {
-      if (mounted) setState(() => _message = 'فشل التحقق من الملف: $error');
+      if (mounted) setState(() => _message = 'فشل التحقق: $error');
     } finally {
       if (encrypted != null && await encrypted.exists()) await encrypted.delete();
       try { await WakelockPlus.disable(); } catch (_) {}
@@ -304,32 +268,29 @@ class _QrTransferPageState extends State<QrTransferPage> {
 
   void _stop() {
     _sendToken?.cancelled = true;
+    if (_sending) {
+      setState(() => _message = 'جارٍ إيقاف بث الرموز...');
+      return;
+    }
     setState(() {
-      _confirmSend = false;
       _showInvite = false;
-      _scanReply = false;
       _scanInvite = false;
-      _showReply = false;
       _scanData = false;
-      _sending = false;
-      _message = 'تم إيقاف الجلسة. يمكنك بدء اقتران جديد.';
+      _message = 'تم إيقاف الجلسة. يمكنك البدء من جديد.';
     });
     unawaited(WakelockPlus.disable());
   }
 
-  Widget _staticQr(String value) => Container(
+  Widget _staticQr(String data) => Container(
     alignment: Alignment.center,
     padding: const EdgeInsets.all(12),
     color: Colors.white,
-    child: QrImageView(data: value, version: QrVersions.auto,
+    child: QrImageView(data: data, version: QrVersions.auto,
       errorCorrectionLevel: QrErrorCorrectLevel.M, size: 306),
   );
 
-  /// qr_flutter's default string constructor uses Byte mode. Explicitly
-  /// choose Alphanumeric mode so Base45 actually lowers module density.
-  Widget _dataQr(String value) {
-    final qr = QrCode(13, QrErrorCorrectLevel.L)
-      ..addAlphaNumeric(value);
+  Widget _dataQr(String data) {
+    final qr = QrCode(13, QrErrorCorrectLevel.L)..addAlphaNumeric(data);
     return Container(
       alignment: Alignment.center,
       padding: const EdgeInsets.all(6),
@@ -347,128 +308,104 @@ class _QrTransferPageState extends State<QrTransferPage> {
   );
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('ViaDrop • الكاميرا')),
-      body: SafeArea(child: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          const Text('النقل بالكاميرا فقط • اقتران بمسح QR دون كلمة مرور',
-            style: TextStyle(fontWeight: FontWeight.w600)),
-          const SizedBox(height: 12),
-          Wrap(spacing: 10, children: [
-            ChoiceChip(label: const Text('إرسال'), selected: _sendMode,
-              onSelected: _active ? null : (_) => setState(() => _sendMode = true)),
-            ChoiceChip(label: const Text('استقبال'), selected: !_sendMode,
-              onSelected: _active ? null : (_) => setState(() => _sendMode = false)),
-          ]),
-          const SizedBox(height: 12),
-          if (_sendMode) ...[
-            OutlinedButton.icon(
-              onPressed: _active ? null : _pick,
-              icon: const Icon(Icons.attach_file),
-              label: Text(_selected?.uri.pathSegments.last ?? 'اختر الملف'),
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('ViaDrop • الكاميرا')),
+    body: SafeArea(child: ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        const Text('QR باتجاه واحد: امسح رمز البداية مرة واحدة ثم استقبل.',
+          style: TextStyle(fontWeight: FontWeight.w600)),
+        const SizedBox(height: 12),
+        Wrap(spacing: 10, children: [
+          ChoiceChip(label: const Text('إرسال'), selected: _sendMode,
+            onSelected: _active ? null : (_) => setState(() => _sendMode = true)),
+          ChoiceChip(label: const Text('استقبال'), selected: !_sendMode,
+            onSelected: _active ? null : (_) => setState(() => _sendMode = false)),
+        ]),
+        const SizedBox(height: 12),
+        if (_sendMode) ...[
+          OutlinedButton.icon(
+            onPressed: _active ? null : _pick,
+            icon: const Icon(Icons.attach_file),
+            label: Text(_selected?.uri.pathSegments.last ?? 'اختر الملف'),
+          ),
+          if (!_active)
+            SwitchListTile(
+              title: const Text('QR سريع (تجريبي)'),
+              subtitle: const Text('الكاميرات القديمة قد تفقد إطارات أكثر.'),
+              value: _fastMode,
+              onChanged: (v) => setState(() => _fastMode = v),
             ),
-            if (!_active)
-              SwitchListTile(
-                title: const Text('QR سريع (تجريبي)'),
-                subtitle: const Text('أسرع لكن قد تخسر الكاميرات القديمة إطارات أكثر.'),
-                value: _fastMode,
-                onChanged: (value) => setState(() => _fastMode = value),
-              ),
-            const SizedBox(height: 10),
-            if (!_active)
-              FilledButton.icon(onPressed: _ready ? _beginInvite : null,
-                icon: const Icon(Icons.qr_code), label: const Text('إنشاء اقتران')),
-            if (_showInvite) ...[
-              const Text('1. خلي الجهاز المستقبل يمسح هذا الرمز.'),
-              _staticQr(_pairing!.invitation),
-              FilledButton.icon(
-                onPressed: _beginReplyScan,
-                icon: const Icon(Icons.qr_code_scanner),
-                label: const Text('مسح تأكيد الجهاز الثاني'),
-              ),
-            ],
-            if (_scanReply) ...[
-              const Text('2. امسح رمز التأكيد الظاهر في الهاتف المستقبل.'),
-              _scanner(),
-            ],
-            if (_sending)
-              _frame == null
-                  ? const Center(child: CircularProgressIndicator())
-                  : _dataQr(_frame!),
-            if (_sending)
-              LinearProgressIndicator(value: null),
-          ] else ...[
-            if (!_active)
-              FilledButton.icon(
-                onPressed: _ready ? _beginReceive : null,
-                icon: const Icon(Icons.camera_alt_outlined),
-                label: const Text('مسح اقتران المرسل'),
-              ),
-            if (_scanInvite) ...[
-              const Text('1. امسح رمز الاقتران الثابت من شاشة المرسل.'),
-              _scanner(),
-            ],
-            if (_showReply) ...[
-              const Text('2. اعرض هذا الرمز للمرسل ليؤكد الاقتران.'),
-              _staticQr(_pairing!.reply),
-              FilledButton.icon(
-                onPressed: _beginDataScan,
-                icon: const Icon(Icons.camera_alt),
-                label: const Text('البصمتان متطابقتان • استقبل الملف'),
-              ),
-            ],
-            if (_scanData) ...[
-              const Text('وجّه الكاميرا إلى إطارات QR المتحركة.'),
-              _scanner(),
-              LinearProgressIndicator(value: _progress),
-            ],
-            if (_finalizing) const LinearProgressIndicator(),
-            if (_received != null)
-              FilledButton.tonalIcon(
-                onPressed: () => OpenFilex.open(_received!.path),
-                icon: const Icon(Icons.open_in_new),
-                label: const Text('فتح الملف المستلم'),
-              ),
-          ],
-          if ((_showReply || _confirmSend) && _pairing?.verificationCode != null) ...[
-            const Text('قارن هذه البصمة على الهاتفين. ألغِ العملية إذا اختلفت.'),
-            SelectableText(_pairing!.verificationCode!,
-              textDirection: TextDirection.ltr,
-              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-          ],
-          if (_confirmSend)
+          if (!_active)
             FilledButton.icon(
-              onPressed: () {
-                setState(() => _confirmSend = false);
-                unawaited(_transmit());
-              },
-              icon: const Icon(Icons.verified_user),
-              label: const Text('البصمتان متطابقتان • أرسل الملف'),
+              onPressed: _ready && _selected != null ? _beginSend : null,
+              icon: const Icon(Icons.qr_code),
+              label: const Text('عرض QR البداية'),
             ),
-          if (_active) ...[
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
-              onPressed: _finalizing ? null : _stop,
-              icon: const Icon(Icons.stop),
-              label: const Text('إيقاف العملية'),
+          if (_showInvite) ...[
+            const Text('امسح هذا الرمز بالمستقبل. يبقى ثابتاً حتى تبدأ البث.'),
+            _staticQr(_session!.announcement),
+            FilledButton.icon(
+              onPressed: _transmit,
+              icon: const Icon(Icons.play_arrow),
+              label: const Text('بدء النقل • عد تنازلي ٣ ثوانٍ'),
             ),
           ],
-          const SizedBox(height: 16),
-          Card(child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Text(_message),
-          )),
-          const SizedBox(height: 8),
-          const Text(
-            'يبدأ بث الملف بعد مسح رمز الرد ومقارنة البصمة على الهاتفين. '
-            'المفتاح يُشتق تلقائياً ولا يظهر على الشاشة. '
-            'السرعة الفعلية تعتمد على وضوح الشاشة والكاميرا.',
-            style: TextStyle(fontSize: 12),
+          if (_sending) ...[
+            if (_countdown > 0)
+              Center(child: Text('$_countdown',
+                style: const TextStyle(fontSize: 70, fontWeight: FontWeight.bold)))
+            else if (_frame == null)
+              const Center(child: CircularProgressIndicator())
+            else
+              _dataQr(_frame!),
+            const LinearProgressIndicator(),
+          ],
+        ] else ...[
+          if (!_active)
+            FilledButton.icon(
+              onPressed: _ready ? _beginReceive : null,
+              icon: const Icon(Icons.camera_alt_outlined),
+              label: const Text('استقبال بالـQR'),
+            ),
+          if (_scanInvite) ...[
+            const Text('امسح رمز البداية الثابت على الهاتف المرسل.'),
+            _scanner(),
+          ],
+          if (_scanData) ...[
+            const Text('تم مسح البداية. وجّه الكاميرا إلى رموز البيانات.'),
+            _scanner(),
+            LinearProgressIndicator(value: _progress),
+          ],
+          if (_finalizing) const LinearProgressIndicator(),
+          if (_received != null)
+            FilledButton.tonalIcon(
+              onPressed: () => OpenFilex.open(_received!.path),
+              icon: const Icon(Icons.open_in_new),
+              label: const Text('فتح الملف المستلم'),
+            ),
+        ],
+        if (_active) ...[
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: _finalizing ? null : _stop,
+            icon: const Icon(Icons.stop),
+            label: const Text('إيقاف العملية'),
           ),
         ],
-      )),
-    );
-  }
+        const SizedBox(height: 16),
+        Card(child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Text(_message),
+        )),
+        const SizedBox(height: 8),
+        const Text(
+          'يُرسل مفتاح الجلسة داخل QR الافتتاحي، لذلك يستطيع أي شخص '
+          'يمسح الرمز قراءة الملف المنقول. النقل باتجاه واحد ولا يتطلب '
+          'مسح تأكيد أو شبكة.',
+          style: TextStyle(fontSize: 12),
+        ),
+      ],
+    )),
+  );
 }
