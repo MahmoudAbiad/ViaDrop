@@ -98,4 +98,30 @@ void main() {
       await temporary.delete(recursive: true);
     }
   }, timeout: const Timeout(Duration(minutes: 2)));
+
+  test('LAN startup releases TCP port if UDP discovery fails', () async {
+    final temporary = await Directory.systemTemp.createTemp('viadrop-startup-');
+    final reservation = await ServerSocket.bind(InternetAddress.anyIPv4, 0);
+    final tcpPort = reservation.port;
+    await reservation.close();
+
+    final engine = LanEngine(
+      directory: temporary,
+      port: tcpPort,
+      discoveryPort: -1,
+      consent: (peer, size) async => false,
+      onFile: (file) async {},
+      onProgress: (done, total) {},
+      onError: (error) {},
+    );
+    try {
+      await expectLater(engine.initialize(), throwsA(anything));
+      // Without startup rollback, this bind fails with "address in use".
+      final probe = await ServerSocket.bind(InternetAddress.anyIPv4, tcpPort);
+      await probe.close();
+    } finally {
+      await engine.dispose();
+      await temporary.delete(recursive: true);
+    }
+  }, timeout: const Timeout(Duration(seconds: 20)));
 }

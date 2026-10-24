@@ -12,11 +12,22 @@ class LanEngine extends TransferEngine {
  @override Capabilities get capabilities=>const Capabilities(discovery:true);
  @override Future<bool> checkAvailability()async=>(await NetworkInterface.list(type:InternetAddressType.IPv4)).isNotEmpty;
  @override Future<void> initialize()async{
-  if(_server!=null)return;_server=await HttpServer.bind(InternetAddress.anyIPv4,port);
-  _server!.listen((r)async{try{await _handle(r);}catch(e){onError(e);try{r.response.statusCode=400;await r.response.close();}catch(_){}}});
-  _udp=await RawDatagramSocket.bind(InternetAddress.anyIPv4,discoveryPort,reuseAddress:true);_udp!.broadcastEnabled=true;
-  _udp!.listen((e){if(e!=RawSocketEvent.read)return;final d=_udp!.receive();if(d==null||d.data.length>256)return;try{if(jsonDecode(utf8.decode(d.data))['v']=='VD1')_peers.add(Peer(d.address.address,'ViaDrop • ${d.address.address}'));}catch(_){}});
-  _timer=Timer.periodic(const Duration(seconds:2),(_){_udp?.send(utf8.encode('{"v":"VD1"}'),InternetAddress('255.255.255.255'),discoveryPort);});
+  if(_server!=null)return;
+  try{
+   _server=await HttpServer.bind(InternetAddress.anyIPv4,port);
+   _server!.listen((r)async{try{await _handle(r);}catch(e){onError(e);try{r.response.statusCode=400;await r.response.close();}catch(_){}}});
+   _udp=await RawDatagramSocket.bind(InternetAddress.anyIPv4,discoveryPort,reuseAddress:true);
+   _udp!.broadcastEnabled=true;
+   _udp!.listen((e){if(e!=RawSocketEvent.read)return;final d=_udp!.receive();if(d==null||d.data.length>256)return;try{if(jsonDecode(utf8.decode(d.data))['v']=='VD1')_peers.add(Peer(d.address.address,'ViaDrop • ${d.address.address}'));}catch(_){}});
+   _timer=Timer.periodic(const Duration(seconds:2),(_){_udp?.send(utf8.encode('{"v":"VD1"}'),InternetAddress('255.255.255.255'),discoveryPort);});
+  }catch(_){
+   // Binding the discovery socket can fail after the HTTP port is bound.
+   // Always free every partially started resource so the user can retry.
+   _timer?.cancel();_timer=null;
+   _udp?.close();_udp=null;
+   await _server?.close(force:true);_server=null;
+   rethrow;
+  }
  }
  Future<void> _handle(HttpRequest r)async{
   Future<void> reject(int status)async{r.response.statusCode=status;await r.response.close();}
