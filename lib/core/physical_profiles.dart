@@ -14,6 +14,7 @@ class PhysicalProfile {
     this.qrBlockBytes = 0,
     this.qrVersion = 13,
     this.audioBlockBytes = 0,
+    this.audioFrameGapMs = 180,
     this.audioFast = false,
     this.audioHigh = false,
   });
@@ -21,7 +22,7 @@ class PhysicalProfile {
   final String id, title, description;
   final PhysicalMedium medium;
   final bool implemented, audioFast, audioHigh;
-  final int qrFps, qrBlockBytes, qrVersion, audioBlockBytes;
+  final int qrFps, qrBlockBytes, qrVersion, audioBlockBytes, audioFrameGapMs;
 }
 
 const physicalProfiles = <PhysicalProfile>[
@@ -47,9 +48,10 @@ const physicalProfiles = <PhysicalProfile>[
     qrFps: 5, qrBlockBytes: 280,
   ),
   PhysicalProfile(
-    id: 'audio-turbo', medium: PhysicalMedium.audio, title: 'OFDM Turbo',
-    description: 'تشكيل صوتي متقدم — لم يُنفّذ بعد',
-    implemented: false,
+    id: 'audio-turbo', medium: PhysicalMedium.audio,
+    title: 'OFDM Turbo • تجريبي',
+    description: 'مودم OFDM الحالي بفاصل 40ms بدلاً من 180ms بين الإطارات، يحتاج هاتف حديثاً؛ لا يتضمن تشكيلاً صوتياً جديداً',
+    audioBlockBytes: 900, audioFast: true, audioFrameGapMs: 40,
   ),
   PhysicalProfile(
     id: 'audio-ofdm', medium: PhysicalMedium.audio, title: 'OFDM Wideband • تجريبي',
@@ -94,6 +96,8 @@ class PhysicalCapabilities {
     required this.audioInput48k,
     required this.audioOutput48k,
     required this.ofdmNative,
+    this.androidSdk = 0,
+    this.processorCores = 0,
     required this.ultrasoundInput,
     required this.ultrasoundOutput,
   });
@@ -102,9 +106,11 @@ class PhysicalCapabilities {
       : probeOk = false, camera = false, cameraMaxFps = 0,
         displayHz = 0, microphone = false, audioInput48k = false,
         audioOutput48k = false, ofdmNative = false,
-        ultrasoundInput = false, ultrasoundOutput = false;
+        ultrasoundInput = false, ultrasoundOutput = false,
+        androidSdk = 0, processorCores = 0;
 
   final bool probeOk, camera, microphone, audioInput48k, audioOutput48k;
+  final int androidSdk, processorCores;
   final bool ofdmNative, ultrasoundInput, ultrasoundOutput;
   final int cameraMaxFps;
   final double displayHz;
@@ -119,6 +125,8 @@ class PhysicalCapabilities {
         audioInput48k: m['audioInput48k'] == true,
         audioOutput48k: m['audioOutput48k'] == true,
         ofdmNative: m['ofdmNative'] == true,
+        androidSdk: (m['androidSdk'] as num?)?.toInt() ?? 0,
+        processorCores: (m['processorCores'] as num?)?.toInt() ?? 0,
         ultrasoundInput: m['ultrasoundInput'] == true,
         ultrasoundOutput: m['ultrasoundOutput'] == true,
       );
@@ -153,6 +161,12 @@ class PhysicalCapabilities {
     if (!microphone || !audioInput48k || !audioOutput48k) {
       return const ProfileAvailability(
         false, 'الميكروفون أو تشغيل/تسجيل PCM 48 kHz غير متاح',
+      );
+    }
+    if (p.id == 'audio-turbo' &&
+        (androidSdk < 26 || processorCores < 4)) {
+      return const ProfileAvailability(
+        false, 'Turbo: يحتاج Android 8 أو أحدث وأربع أنوية على الأقل',
       );
     }
     if (p.audioFast && !ofdmNative) {
