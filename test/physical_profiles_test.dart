@@ -19,7 +19,7 @@ void main() {
   );
 
   test('only implemented and provisionally supported modes are selectable', () {
-    expect(modern.recommended(PhysicalMedium.qr)?.id, 'qr-fast');
+    expect(modern.recommended(PhysicalMedium.qr)?.id, 'qr-dense');
     expect(modern.recommended(PhysicalMedium.audio)?.id, 'audio-ofdm');
     expect(older.recommended(PhysicalMedium.qr)?.id, 'qr-standard');
     expect(older.recommended(PhysicalMedium.audio)?.id, 'audio-audible');
@@ -30,6 +30,9 @@ void main() {
     expect(modern.availability(physicalProfileById('audio-ultrasound')!).enabled,
         isFalse);
     expect(older.availability(physicalProfileById('qr-fast')!).enabled, isFalse);
+    expect(older.availability(physicalProfileById('qr-dense')!).enabled, isFalse);
+    expect(physicalProfileById('qr-dense')!.qrVersion, 17);
+    expect(physicalProfileById('qr-dense')!.qrBlockBytes, 512);
     expect(older.availability(physicalProfileById('audio-ofdm')!).enabled, isFalse);
   });
 
@@ -47,7 +50,7 @@ void main() {
       'probeOk': true, 'camera': true,
       'cameraMaxFps': 30, 'displayHz': 60.0,
     });
-    expect(caps.recommended(PhysicalMedium.qr)?.id, 'qr-fast');
+    expect(caps.recommended(PhysicalMedium.qr)?.id, 'qr-dense');
     expect(caps.recommended(PhysicalMedium.audio), isNull);
   });
 
@@ -70,7 +73,7 @@ void main() {
     expect(OneWaySession.parse(
       fast.announcement.replaceFirst('VDS3:', 'VDS2:'),
     ), isNull);
-    expect(() => OneWaySession.create(profileId: 'qr-dense'),
+    expect(() => OneWaySession.create(profileId: 'qr-ultra'),
         throwsArgumentError);
   });
 }
