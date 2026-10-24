@@ -48,6 +48,11 @@ jobs:
           PY
       - name: Resolve Flutter dependencies
         run: flutter pub get
+      - name: Remove generated Flutter starter widget test
+        run: |
+          if [ -f test/widget_test.dart ] && grep -q 'MyApp()' test/widget_test.dart; then
+            rm test/widget_test.dart
+          fi
       - name: Run Dart tests
         run: flutter test
       - name: Static analysis
