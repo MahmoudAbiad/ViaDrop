@@ -44,4 +44,42 @@ void main() {
       await dir.delete(recursive: true);
     }
   });
+  test('vault rejects incorrect credentials and tampered ciphertext without plaintext remnants', () async {
+    final dir = await Directory.systemTemp.createTemp('viadrop-integrity-');
+    try {
+      final input = File('${dir.path}/sensitive.bin');
+      final plain = List<int>.generate(90001, (i) => (i * 31 + 7) % 256);
+      await input.writeAsBytes(plain);
+      final encrypted = File('${dir.path}/sensitive.vdp');
+      const password = 'correct-shared-secret-123';
+      await Vault.seal(input, encrypted, password, CancelToken());
+
+      final destination = Directory('${dir.path}/received');
+      await destination.create();
+      // Failed authentication must never leave a recoverable partial file.
+      await expectLater(
+        Vault.open(encrypted, destination, 'incorrect-secret-456', CancelToken()),
+        throwsA(anything),
+      );
+      expect(await destination.list().toList(), isEmpty);
+
+      // The record sequence, including its tag, is authenticated by AES-GCM.
+      final tampered = File('${dir.path}/tampered.vdp');
+      final ciphertext = await encrypted.readAsBytes();
+      ciphertext[ciphertext.length ~/ 2] ^= 0x01;
+      await tampered.writeAsBytes(ciphertext);
+      await expectLater(
+        Vault.open(tampered, destination, password, CancelToken()),
+        throwsA(anything),
+      );
+      expect(await destination.list().toList(), isEmpty);
+
+      // Ensure a failed attempt does not poison the original valid envelope.
+      final restored = await Vault.open(encrypted, destination, password, CancelToken());
+      expect(await restored.readAsBytes(), orderedEquals(plain));
+    } finally {
+      await dir.delete(recursive: true);
+    }
+  });
+
 }
