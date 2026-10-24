@@ -32,6 +32,8 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
   CancelToken? _sendToken;
   bool _ready = false;
   bool _receiving = false;
+  // Protect the asynchronous microphone-permission/startup window.
+  bool _listenStarting = false;
   bool _sending = false;
   bool _finalizing = false;
   bool _highFrequency = false;
@@ -53,7 +55,7 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
     if (mounted) setState(() => _status = status);
   }
 
-  bool get _active => _receiving || _sending || _finalizing;
+  bool get _active => _receiving || _listenStarting || _sending || _finalizing;
   bool get _validPass => _pass.text.length >= 12;
 
   Future<void> _pick() async {
@@ -146,14 +148,18 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
       _show('اكتب نفس عبارة المرور على الجهازين قبل الاستقبال.');
       return;
     }
-    _decoder = PhysicalDecoder(4096);
-    _manager.begin();
-    _manager.update(Phase.waiting);
-    _events = NativeBridge.events.listen(
-      _handleEvent,
-      onError: (Object error) => unawaited(_failReceive('خطأ في استقبال الصوت: $error')),
-    );
+    // Guard immediately, before waiting for the screen-lock plugin or the
+    // asynchronous Android microphone permission prompt.
+    setState(() => _listenStarting = true);
     try {
+      _decoder = PhysicalDecoder(4096);
+      _manager.begin();
+      _manager.update(Phase.waiting);
+      _events = NativeBridge.events.listen(
+        _handleEvent,
+        onError: (Object error) =>
+            unawaited(_failReceive('خطأ في استقبال الصوت: $error')),
+      );
       await WakelockPlus.enable();
       if (!mounted) {
         await _events?.cancel();
@@ -161,8 +167,6 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
         await WakelockPlus.disable();
         return;
       }
-      // Mark the session active before native audio starts. Otherwise an
-      // immediate decoder failure can arrive while _receiving is still false.
       setState(() {
         _receiving = true;
         _progress = 0;
@@ -170,12 +174,19 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
         _status = 'جارٍ تشغيل الميكروفون...';
       });
       await NativeBridge.listen();
-      if (mounted && _receiving) {
+      // Stop can be pressed while permission_handler is still waiting for
+      // the user. Do not leave an orphan microphone session when the native
+      // call returns after the receiver was cancelled or disposed.
+      if (!mounted || !_receiving) {
+        await NativeBridge.stopAudio();
+      } else {
         _show('يستمع الميكروفون الآن للإشارات الصوتية. قرّب الجهازين.');
       }
     } catch (error) {
       await _stopReceive();
       _show('تعذّر فتح الميكروفون: $error');
+    } finally {
+      if (mounted) setState(() => _listenStarting = false);
     }
   }
 
@@ -241,6 +252,9 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
   }
 
   Future<void> _stopReceive() async {
+    // Invalidate the UI session *before* the first await. Native listen()
+    // may complete in the same interval while Android grants permission.
+    if (mounted && _receiving) setState(() => _receiving = false);
     try {
       await NativeBridge.stopAudio();
     } catch (_) {}
@@ -333,7 +347,7 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
           ] else ...[
             if (!_receiving && !_finalizing)
               FilledButton.icon(
-                onPressed: _ready ? _startReceive : null,
+                onPressed: _ready && !_listenStarting ? _startReceive : null,
                 icon: const Icon(Icons.mic),
                 label: const Text('بدء الاستماع'),
               ),
