@@ -7,20 +7,63 @@ import '../third_party/onesend/fountain.dart';
 import '../third_party/onesend/protocol.dart';
 import 'qr_codec.dart';
 class PhysicalDecoder {
- PhysicalDecoder(this.maxBytes,{this.expectedSessionId});final int maxBytes;final int? expectedSessionId;FrameHeader? header;LTDecoder? decoder;
+ PhysicalDecoder(this.maxBytes,{this.expectedSessionId});
+ final int maxBytes;
+ final int? expectedSessionId;
+ FrameHeader? header;
+ LTDecoder? decoder;
+
+ /// Counts packets seen by the decoder, not missing air/camera frames.
+ int validFrames = 0;
+ int rejectedFrames = 0;
+ int completedBytes = 0;
+ final Stopwatch _rxClock = Stopwatch();
+
  double get progress=>decoder==null?0:decoder!.solvedCount/decoder!.blockCount;
- Uint8List? add(Uint8List bytes){
-  if(bytes.length>1100)return null;final p=parseFrame(bytes);if(p==null)return null;final h=p.header;
-  if(h.protocolVersion!=2||h.totalLength>maxBytes||h.blockLength>1024||h.blockCount>20000||
-     (expectedSessionId!=null&&h.sessionId!=expectedSessionId))return null;
-  if(header!=null&&!header!.matches(h))return null;header??=h;
-  decoder??=LTDecoder(blockCount:h.blockCount,blockLength:h.blockLength,sessionId:h.sessionId,totalLength:h.totalLength);
-  decoder!.addFrame(h.sequence,p.block);final result=decoder!.assemble();
-  if(result!=null&&crc32(result)!=h.payloadChecksum){
-   // A fully assembled but invalid transfer must not lock the receiver onto
-   // its session forever. Discard all its frames before the next transmission.
-   header=null;decoder=null;
+ double get receivedFramesPerSecond => _rxClock.elapsedMilliseconds == 0
+     ? 0 : validFrames * 1000 / _rxClock.elapsedMilliseconds;
+ /// Payload goodput from first accepted frame to complete reconstruction.
+ /// Excludes setup, QR scanning of start packet and file decryption.
+ double get payloadKiBPerSecond =>
+     _rxClock.elapsedMilliseconds == 0 || completedBytes == 0
+         ? 0 : completedBytes * 1000 / (_rxClock.elapsedMilliseconds * 1024);
+
+ Uint8List? add(Uint8List bytes) {
+  if(bytes.length>1100) {rejectedFrames++;return null;}
+  final p=parseFrame(bytes);
+  if(p==null) {rejectedFrames++;return null;}
+  final h=p.header;
+  if(h.protocolVersion!=2||h.totalLength>maxBytes||
+     h.blockLength>1024||h.blockCount>20000||
+     (expectedSessionId!=null&&h.sessionId!=expectedSessionId)) {
+    rejectedFrames++;
+    return null;
+  }
+  if(header!=null&&!header!.matches(h)) {
+    rejectedFrames++;
+    return null;
+  }
+  header??=h;
+  decoder??=LTDecoder(
+    blockCount:h.blockCount,blockLength:h.blockLength,
+    sessionId:h.sessionId,totalLength:h.totalLength,
+  );
+  if(!_rxClock.isRunning&&completedBytes==0) _rxClock.start();
+  validFrames++;
+  decoder!.addFrame(h.sequence,p.block);
+  final result=decoder!.assemble();
+  if(result!=null&&crc32(result)!=h.payloadChecksum) {
+   header=null;
+   decoder=null;
+   completedBytes=0;
+   validFrames=0;
+   _rxClock.reset();
+   rejectedFrames++;
    throw const FormatException('Payload checksum failed');
+  }
+  if(result!=null&&completedBytes==0) {
+    completedBytes=result.length;
+    _rxClock.stop();
   }
   return result;
  }
