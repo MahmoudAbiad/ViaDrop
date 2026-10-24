@@ -9,6 +9,11 @@
   legacy X25519 crypto tests.
 - `one_way_session_test.dart`: one-way invitation parsing, independent keys,
   malformed starts, session filtering and encrypted fountain reconstruction.
+- `physical_profiles_test.dart`: implemented/disabled profile checks, probe
+  failures, automatic local recommendation, and VDS3 mode agreement.
+- `physical_profile_selector_test.dart`: disabled dropdown entries.
+- Physical device probe and transport settings require on-device tests; CI
+  simulation does not establish real cross-device codec performance.
 - `lan_integration_test.dart`: local host HTTP consent/streaming/error scenarios.
 - `native/audio_loopback.cpp`: actual ggwave PCM encode/decode at 48 kHz signed
   16-bit mono, audible-fast and ultrasound-fast, 64/132/140-byte packets, with
@@ -44,8 +49,8 @@ commit, APK hash, channel, mode, input/output SHA-256, elapsed time and outcome.
      receiver session, and AES-GCM and SHA-256 verify the final file.
    - Receiver sends no ACK; sender must be stopped manually after verifying
      success on the receiver.
-3. Protocol/security: malformed VDS2 QR/audio announcements are rejected.
-   An observer who captured VDS2 can decrypt this intentionally public-key
+3. Protocol/security: malformed VDS3 QR/audio announcements are rejected.
+   An observer who captured VDS3 can decrypt this intentionally public-key
    announcement; explicitly warn users not to send sensitive files. Legacy
    X25519 unit tests are retained but no longer drive either physical UI.
 4. LAN: offline router, accept/reject, multiple files, large-file memory use,
@@ -56,6 +61,15 @@ commit, APK hash, channel, mode, input/output SHA-256, elapsed time and outcome.
    preparation/verification, temp cleanup, empty files and insufficient storage.
 
 No physical completion rate or measured on-device throughput is available yet.
+
+## Physical profile compatibility (new)
+
+See [docs/PHYSICAL_PROFILES.md](docs/PHYSICAL_PROFILES.md). Test each transfer
+with the same exact profile on both phones, then deliberately choose a mismatch:
+QR should refuse the start while retaining its scan screen, and acoustic should
+stop listening and show the sender's profile. Newly built VDS3 APKs cannot
+interoperate with old VDS2 builds. Planned modes remain disabled even on
+top-end phones. Probe results are only preliminary hardware evidence.
 
 ## Fast-audio implementation checkpoint
 
