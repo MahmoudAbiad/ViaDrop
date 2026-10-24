@@ -169,4 +169,58 @@ void main() {
     expect(received, isNotNull);
     expect(received, orderedEquals(payload));
   });
+
+  test('$testName', () {
+    final corruptedPayload = Uint8List.fromList(
+      List<int>.generate(120, (index) => (index * 11 + 1) % 256),
+    );
+    final badEncoder = LTEncoder(
+      payload: corruptedPayload,
+      blockLength: 60,
+      sessionId: 101,
+    );
+    final invalidChecksum = crc32(corruptedPayload) ^ 1;
+
+    Uint8List frameFor(LTEncoder encoder, Uint8List payload,
+        int sessionId, int checksum, int sequence) =>
+        packFrame(
+          FrameHeader(
+            sessionId: sessionId,
+            sequence: sequence,
+            blockCount: encoder.blockCount,
+            blockLength: 60,
+            totalLength: payload.length,
+            payloadChecksum: checksum,
+          ),
+          encoder.encode(sequence),
+        );
+
+    final receiver = PhysicalDecoder(1024);
+    expect(receiver.add(frameFor(
+      badEncoder, corruptedPayload, 101, invalidChecksum, 0,
+    )), isNull);
+    expect(() => receiver.add(frameFor(
+      badEncoder, corruptedPayload, 101, invalidChecksum, 1,
+    )), throwsFormatException);
+    expect(receiver.progress, 0);
+    expect(receiver.header, isNull);
+
+    // After a failed burst, a new valid sender must be able to start over
+    // without stopping and restarting the microphone or QR camera.
+    final newPayload = Uint8List.fromList(
+      List<int>.generate(120, (index) => (index * 7 + 9) % 256),
+    );
+    final goodEncoder = LTEncoder(
+      payload: newPayload,
+      blockLength: 60,
+      sessionId: 202,
+    );
+    final goodChecksum = crc32(newPayload);
+    expect(receiver.add(frameFor(
+      goodEncoder, newPayload, 202, goodChecksum, 0,
+    )), isNull);
+    expect(receiver.add(frameFor(
+      goodEncoder, newPayload, 202, goodChecksum, 1,
+    )), orderedEquals(newPayload));
+  });
 }

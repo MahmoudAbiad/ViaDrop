@@ -15,7 +15,13 @@ class PhysicalDecoder {
   if(header!=null&&!header!.matches(h))return null;header??=h;
   decoder??=LTDecoder(blockCount:h.blockCount,blockLength:h.blockLength,sessionId:h.sessionId,totalLength:h.totalLength);
   decoder!.addFrame(h.sequence,p.block);final result=decoder!.assemble();
-  if(result!=null&&crc32(result)!=h.payloadChecksum)throw const FormatException('Payload checksum failed');return result;
+  if(result!=null&&crc32(result)!=h.payloadChecksum){
+   // A fully assembled but invalid transfer must not lock the receiver onto
+   // its session forever. Discard all its frames before the next transmission.
+   header=null;decoder=null;
+   throw const FormatException('Payload checksum failed');
+  }
+  return result;
  }
 }
 /// Consume every QR code reported in one camera capture. The scanner may
