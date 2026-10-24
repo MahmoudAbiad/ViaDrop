@@ -3,7 +3,7 @@ import 'dart:typed_data';
 
 /// Base45 forces QR alphanumeric mode (instead of byte mode for base64url).
 /// Each 2-byte group becomes 3 alphanumeric characters.
-const _alphabet = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:';
+const _alphabet = r'0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:';
 final _digits = {
   for (var i = 0; i < _alphabet.length; i++) _alphabet[i]: i,
 };
