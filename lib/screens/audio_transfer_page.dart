@@ -32,6 +32,13 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
   OpticalPairing? _pairing;
   Future<void>? _beaconTask;
   Future<void>? _replyTask;
+  Future<void>? _readyTask;
+  // One acoustic transmitter per turn. A beacon opens a silent reply window.
+  bool _invitationBusy = false;
+  bool _replyBusy = false;
+  String? _acceptedInvitation;
+  int _handshakeEpoch = 0;
+  Completer<void>? _beaconWake;
   bool _pairingSender = false;
   bool _identityConfirmed = false;
   bool _senderReady = false;
@@ -185,7 +192,13 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
         throw StateError('اكتب نصاً أو اختر ملفاً أولاً');
       }
       await WakelockPlus.enable();
+      ++_handshakeEpoch;
       _pairing = null;
+      _acceptedInvitation = null;
+      _invitationBusy = false;
+      _replyBusy = false;
+      _replyTask = null;
+      _readyTask = null;
       _identityConfirmed = false;
       _senderReady = false;
       _events = NativeBridge.events.listen(
@@ -211,16 +224,24 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
     }
   }
 
+  // ggwave decodes a complete invitation near the end of its playback.
+  // The receiver must leave the entire following turn silent so the sender's
+  // reply is not masked by another invitation. A valid reply ends the wait.
   Future<void> _beaconLoop(OpticalPairing pairing) async {
     final bytes = Uint8List.fromList(utf8.encode(pairing.invitation));
-    while (_receiving && _pairingReceiver && pairing.passphrase == null) {
+    final wake = _beaconWake;
+    while (_receiving && _pairingReceiver &&
+        identical(_pairing, pairing) && pairing.passphrase == null) {
       try {
-        // Only short, audible pairing beacons. High-frequency mode is never
-        // used for discovery, to support older phone microphones.
+        // Pairing always uses the audible, older-device-compatible modem.
         await NativeBridge.play(bytes, false);
-        await Future<void>.delayed(const Duration(milliseconds: 700));
+        await Future.any<void>([
+          Future<void>.delayed(const Duration(milliseconds: 4800)),
+          if (wake != null) wake.future,
+        ]);
       } catch (error) {
-        if (_receiving && _pairingReceiver) {
+        if (_receiving && _pairingReceiver &&
+            identical(_pairing, pairing)) {
           unawaited(_failReceive('فشل إرسال الاقتران: $error'));
         }
         return;
@@ -228,27 +249,71 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
     }
   }
 
-  Future<void> _replyLoop(OpticalPairing pairing) async {
-    final bytes = Uint8List.fromList(utf8.encode(pairing.reply));
-    while (_pairingSender && mounted) {
-      try {
-        await NativeBridge.play(bytes, false);
-        await Future<void>.delayed(const Duration(milliseconds: 700));
-      } catch (error) {
-        if (_pairingSender) unawaited(_failReceive('فشل تأكيد الاقتران: $error'));
-        return;
+  // Reply only to a received invitation, never on a free-running timer.
+  // Another identical invitation means the previous reply was lost.
+  Future<void> _replyOnce(OpticalPairing pairing) async {
+    if (_replyBusy || !_pairingSender || !identical(_pairing, pairing)) return;
+    _replyBusy = true;
+    try {
+      // Let the remote speaker finish before taking our transmit turn.
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      if (!_pairingSender || !identical(_pairing, pairing)) return;
+      await NativeBridge.play(
+        Uint8List.fromList(utf8.encode(pairing.reply)), false,
+      );
+    } catch (error) {
+      if (_pairingSender && identical(_pairing, pairing)) {
+        unawaited(_failReceive('فشل إرسال رد الاقتران: $error'));
       }
+    } finally {
+      if (identical(_pairing, pairing)) _replyBusy = false;
     }
   }
 
   Future<void> _receiveInvitation(String invitation) async {
-    if (!_pairingSender || _pairing != null) return;
-    // Reserve the current attempt before awaiting X25519 key creation.
-    final pairing = await OpticalPairing.acceptInvitation(invitation);
-    if (pairing == null || !_pairingSender || !mounted || _pairing != null) return;
-    _pairing = pairing;
-    _show('وصل الاقتران. يجري تأكيد المفتاح عبر الصوت...');
-    _replyTask = _replyLoop(pairing);
+    if (!_pairingSender || !mounted) return;
+    final existing = _pairing;
+    if (existing != null) {
+      if (invitation == _acceptedInvitation && !_replyBusy) {
+        _replyTask = _replyOnce(existing);
+      }
+      return;
+    }
+    if (_invitationBusy) return;
+    _invitationBusy = true;
+    final epoch = _handshakeEpoch;
+    try {
+      final pairing = await OpticalPairing.acceptInvitation(invitation);
+      if (pairing == null || !_pairingSender || !mounted ||
+          _pairing != null || epoch != _handshakeEpoch) return;
+      _pairing = pairing;
+      _acceptedInvitation = invitation;
+      _show('وصل الاقتران. نرسل الرد ثم نستمع لتأكيد المستقبل...');
+      _replyTask = _replyOnce(pairing);
+    } finally {
+      if (epoch == _handshakeEpoch) _invitationBusy = false;
+    }
+  }
+
+  // Receiver repeats READY only while no file frame has been detected.
+  // This fixes a lost READY without colliding with an ongoing file transfer.
+  Future<void> _readyLoop(OpticalPairing pairing) async {
+    final bytes = Uint8List.fromList(
+      utf8.encode(AcousticReady.token(pairing)),
+    );
+    while (_receiving && _pairingReceiver && _identityConfirmed &&
+        identical(_pairing, pairing) && _decoder.header == null) {
+      try {
+        await NativeBridge.play(bytes, false);
+        // The sender needs time to hear READY and begin its first file frame.
+        await Future<void>.delayed(const Duration(seconds: 8));
+      } catch (error) {
+        if (_receiving && identical(_pairing, pairing)) {
+          unawaited(_failReceive('فشل إرسال تأكيد الاقتران: $error'));
+        }
+        return;
+      }
+    }
   }
 
   Future<void> _finishSenderPairing(String ready) async {
@@ -282,8 +347,12 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
       if (_acceptedReply == null) {
         if (!await pair.acceptReply(response)) return;
         _acceptedReply = response;
+        // End the beacon's silent reply window immediately on valid receipt.
+        if (_beaconWake != null && !_beaconWake!.isCompleted) {
+          _beaconWake!.complete();
+        }
         await _beaconTask;
-        if (!_receiving || !mounted) return;
+        if (!_receiving || !mounted || !identical(_pairing, pair)) return;
         _decoder = PhysicalDecoder(
           64 * 1024, expectedSessionId: pair.sessionId,
         );
@@ -292,11 +361,9 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
         _show('قارن بصمة الاقتران مع الجهاز المرسل ثم أكد التطابق.');
         return;
       }
-      await NativeBridge.play(
-        Uint8List.fromList(utf8.encode(AcousticReady.token(pair))), false,
-      );
+      _readyTask ??= _readyLoop(pair);
       if (mounted && _receiving) {
-        _show('تم إنشاء اتصال صوتي مشفّر تلقائياً. ننتظر الملف...');
+        _show('تم تأكيد البصمة. نرسل إشارة الجاهزية وننتظر الملف...');
       }
     } catch (error) {
       if (_receiving) _show('تعذّر تأكيد الاقتران: $error');
@@ -314,8 +381,16 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
     // asynchronous Android microphone permission prompt.
     setState(() => _listenStarting = true);
     try {
+      ++_handshakeEpoch;
       _pairing = await OpticalPairing.createSender();
       _acceptedReply = null;
+      _acceptedInvitation = null;
+      _beaconWake = Completer<void>();
+      _beaconTask = null;
+      _replyTask = null;
+      _readyTask = null;
+      _invitationBusy = false;
+      _replyBusy = false;
       _identityConfirmed = false;
       _senderReady = false;
       _answerBusy = false;
@@ -445,6 +520,14 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
     // stopping guard active until all resources have been released.
     if (_listenStopping) return;
     _listenStopping = true;
+    ++_handshakeEpoch;
+    if (_beaconWake != null && !_beaconWake!.isCompleted) {
+      _beaconWake!.complete();
+    }
+    _beaconWake = null;
+    _acceptedInvitation = null;
+    _readyTask = null;
+    _replyTask = null;
     _listenStarting = false;
     _pairingSender = false;
     _pairingReceiver = false;
@@ -465,6 +548,10 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
   @override
   void dispose() {
     _sendToken?.cancelled = true;
+    ++_handshakeEpoch;
+    if (_beaconWake != null && !_beaconWake!.isCompleted) {
+      _beaconWake!.complete();
+    }
     _pairingSender = false;
     _pairingReceiver = false;
     _events?.cancel();
