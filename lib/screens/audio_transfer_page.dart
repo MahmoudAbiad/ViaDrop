@@ -151,29 +151,38 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
     _manager.update(Phase.waiting);
     _events = NativeBridge.events.listen(
       _handleEvent,
-      onError: (Object error) => _show('خطأ في استقبال الصوت: ' + error.toString()),
+      onError: (Object error) => unawaited(_failReceive('خطأ في استقبال الصوت: $error')),
     );
     try {
       await WakelockPlus.enable();
-      await NativeBridge.listen();
-      if (mounted) setState(() {
+      if (!mounted) {
+        await _events?.cancel();
+        _events = null;
+        await WakelockPlus.disable();
+        return;
+      }
+      // Mark the session active before native audio starts. Otherwise an
+      // immediate decoder failure can arrive while _receiving is still false.
+      setState(() {
         _receiving = true;
         _progress = 0;
         _result = null;
-        _status = 'يستمع الميكروفون الآن للإشارات الصوتية. قرّب الجهازين.';
+        _status = 'جارٍ تشغيل الميكروفون...';
       });
+      await NativeBridge.listen();
+      if (mounted && _receiving) {
+        _show('يستمع الميكروفون الآن للإشارات الصوتية. قرّب الجهازين.');
+      }
     } catch (error) {
-      await _events?.cancel();
-      _events = null;
-      try { await WakelockPlus.disable(); } catch (_) {}
-      _show('تعذّر فتح الميكروفون: ' + error.toString());
+      await _stopReceive();
+      _show('تعذّر فتح الميكروفون: $error');
     }
   }
 
   void _handleEvent(dynamic data) {
     if (!_receiving || _finalizing || data is! Map) return;
     if (data['type'] == 'error') {
-      _show('المودم الصوتي: ' + (data['message'] ?? 'خطأ').toString());
+      unawaited(_failReceive('المودم الصوتي: ${data['message'] ?? 'خطأ'}'));
       return;
     }
     if (data['type'] != 'audioData') return;
@@ -190,6 +199,12 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
     } catch (error) {
       _show('إطار صوتي غير صالح: ' + error.toString());
     }
+  }
+
+  Future<void> _failReceive(String message) async {
+    if (!_receiving) return;
+    await _stopReceive();
+    _show(message);
   }
 
   Future<void> _finishReceive(Uint8List encryptedData) async {

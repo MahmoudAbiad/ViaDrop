@@ -24,7 +24,7 @@ class MainActivity:FlutterActivity(){
  private var sink:EventChannel.EventSink?=null
  @Volatile private var listening=false
  @Volatile private var audioGeneration=0
- private var recorder:AudioRecord?=null;private var track:AudioTrack?=null
+ @Volatile private var recorder:AudioRecord?=null;private var track:AudioTrack?=null
  @Volatile private var socket:BluetoothSocket?=null
  @Volatile private var server:BluetoothServerSocket?=null
  private val decision=ArrayBlockingQueue<Boolean>(1)
@@ -71,10 +71,26 @@ class MainActivity:FlutterActivity(){
   if(listening)return
   val min=AudioRecord.getMinBufferSize(48000,AudioFormat.CHANNEL_IN_MONO,AudioFormat.ENCODING_PCM_16BIT)
   val r=AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION,48000,AudioFormat.CHANNEL_IN_MONO,AudioFormat.ENCODING_PCM_16BIT,maxOf(min,8192))
-  if(r.state!=AudioRecord.STATE_INITIALIZED){r.release();throw IOException("Microphone unavailable")};recorder=r;listening=true;r.startRecording()
+  if(r.state!=AudioRecord.STATE_INITIALIZED){r.release();throw IOException("Microphone unavailable")}
+  recorder=r
+  listening=true
+  try{r.startRecording()}catch(e:Exception){
+   // A failed start must not leave the receiver permanently marked active.
+   listening=false
+   if(recorder===r)recorder=null
+   r.release()
+   throw e
+  }
   workers.execute{val h=waveInit();try{if(h<0)throw IOException("Decoder unavailable");val b=ByteArray(2048);while(listening){val n=r.read(b,0,b.size);if(n<0)throw IOException("Microphone read failed");if(n>0){waveDecode(h,b,n)?.let{emit(mapOf("type" to "audioData","data" to it))}}}}
    catch(e:Exception){if(listening)emit(mapOf("type" to "error","message" to(e.message?:"Audio error")))}
-   finally{if(h>=0)waveFree(h);try{r.stop()}catch(_:Exception){};r.release();if(recorder===r)recorder=null}}
+   finally{
+    if(h>=0)waveFree(h)
+    try{r.stop()}catch(_:Exception){}
+    r.release()
+    // If decoding stops unexpectedly, permit the next Listen attempt.
+    // Do not reset a newer recording session that was started meanwhile.
+    if(recorder===r){recorder=null;listening=false}
+   }}
  }
  private fun stopAudio(){audioGeneration++;listening=false;try{recorder?.stop()}catch(_:Exception){};try{track?.pause()}catch(_:Exception){}}
  private fun sendBluetooth(address:String,path:String){
