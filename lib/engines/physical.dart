@@ -41,7 +41,7 @@ Uint8List? decodeQrCapture(PhysicalDecoder decoder, Iterable<String?> rawValues)
 class PhysicalEngine extends TransferEngine {
  PhysicalEngine(this.channel,{required this.emit,this.startListening,this.stopListening,this.sessionId});
  @override final Channel channel;final int? sessionId;final Future<void> Function(Uint8List) emit;final Future<void> Function()? startListening,stopListening;
- int fps=6,blockLength=300,audioBlockLength=100;bool paused=false;CancelToken? _token;
+ int fps=6,blockLength=300,audioBlockLength=100,audioFrameGapMs=180;bool paused=false;CancelToken? _token;
  @override Capabilities get capabilities=>Capabilities(pause:true,resume:true,maxBytes:channel==Channel.audio?64*1024:512*1024);
  @override Future<bool> checkAvailability()async=>true;
  @override Future<void> initialize()async{}
@@ -54,7 +54,7 @@ class PhysicalEngine extends TransferEngine {
   while(!token.cancelled){
    if(paused){await Future<void>.delayed(const Duration(milliseconds:100));continue;}
    await emit(packFrame(FrameHeader(sessionId:id,sequence:seq,blockCount:enc.blockCount,blockLength:length,totalLength:payload.length,payloadChecksum:checksum),enc.encode(seq)));
-   progress(++seq,enc.blockCount);await Future<void>.delayed(Duration(milliseconds:channel==Channel.audio?180:1000~/fps));
+   progress(++seq,enc.blockCount);await Future<void>.delayed(Duration(milliseconds:channel==Channel.audio?audioFrameGapMs:1000~/fps));
   }token.check();
  }
  @override Future<void> pause()async{paused=true;}
