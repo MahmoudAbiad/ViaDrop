@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'core/manager.dart';
 import 'core/transfer.dart';
-import 'radio_transfer_page.dart';
 import 'screens/qr_transfer_page.dart';
 import 'screens/audio_transfer_page.dart';
 
@@ -115,43 +114,17 @@ class _RecoveryHomeState extends State<RecoveryHome> {
   }
 
   void showChannel(Channel channel) {
-    if (channel == Channel.wifi || channel == Channel.bluetooth) {
-      Navigator.of(context).push(MaterialPageRoute<void>(
-        builder: (_) => RadioTransferPage(manager: manager, channel: channel),
-      ));
-      return;
-    }
+    // Wi-Fi and Bluetooth are intentionally outside the optical/acoustic V1
+    // release. Keep their source intact but do not expose unfinished flows.
     if (channel == Channel.qr) {
-      Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const QrTransferPage()));
-      return;
+      Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) => const QrTransferPage(),
+      ));
+    } else if (channel == Channel.audio) {
+      Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) => const AudioTransferPage(),
+      ));
     }
-    if (channel == Channel.audio) {
-      Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const AudioTransferPage()));
-      return;
-    }
-    final label = switch (channel) {
-      Channel.wifi => 'Wi-Fi',
-      Channel.bluetooth => 'Bluetooth',
-      Channel.qr => 'QR / Camera',
-      Channel.audio => 'Audio',
-    };
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(label, style: Theme.of(ctx).textTheme.titleLarge),
-            const SizedBox(height: 12),
-            const Text('القناة البصرية/الصوتية لم تربط بعد بواجهة إرسال واستقبال، ولا نعرض نجاحاً وهمياً.'),
-            const SizedBox(height: 16),
-          ],
-        ),
-      ),
-    );
   }
 
   @override
@@ -183,21 +156,29 @@ class _RecoveryHomeState extends State<RecoveryHome> {
               ),
             ),
             const SizedBox(height: 20),
-            Text('قنوات النقل الأربع متاحة للتجربة — لم تُختبر بعد على هاتفين', style: theme.textTheme.titleMedium),
+            Text('النسخة الأولى: النقل بالكاميرا والصوت', style: theme.textTheme.titleMedium),
             const SizedBox(height: 10),
             Wrap(
               spacing: 8,
               runSpacing: 8,
               children: [
-                ActionChip(label: const Text('Wi-Fi'), avatar: const Icon(Icons.wifi),
-                  onPressed: () => showChannel(Channel.wifi)),
-                ActionChip(label: const Text('Bluetooth'), avatar: const Icon(Icons.bluetooth),
-                  onPressed: () => showChannel(Channel.bluetooth)),
-                ActionChip(label: const Text('QR'), avatar: const Icon(Icons.qr_code),
-                  onPressed: () => showChannel(Channel.qr)),
-                ActionChip(label: const Text('Audio'), avatar: const Icon(Icons.graphic_eq),
-                  onPressed: () => showChannel(Channel.audio)),
+                ActionChip(
+                  label: const Text('الكاميرا (QR)'),
+                  avatar: const Icon(Icons.qr_code),
+                  onPressed: () => showChannel(Channel.qr),
+                ),
+                ActionChip(
+                  label: const Text('الصوت'),
+                  avatar: const Icon(Icons.graphic_eq),
+                  onPressed: () => showChannel(Channel.audio),
+                ),
               ],
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Wi-Fi وBluetooth مؤجلتان للإصدار القادم. '
+              'النقل بالكاميرا والصوت لا يحتاج إلى أي اتصال شبكي، '
+              'لكن يجب اختبارهما بين جهازين قبل اعتماد الإصدار.',
             ),
             const SizedBox(height: 22),
             Text('اختبار تشفير محلي — يعمل دون شبكة', style: theme.textTheme.titleMedium),
@@ -226,7 +207,7 @@ class _RecoveryHomeState extends State<RecoveryHome> {
             const SizedBox(height: 12),
             Card(child: Padding(padding: const EdgeInsets.all(16), child: Text(message))),
             const SizedBox(height: 30),
-            Text('Recovery Preview — ليس إصدار مشاركة ملفات مكتملاً',
+            Text('ViaDrop V1 Preview — الكاميرا والصوت قيد التحقق الميداني',
               textAlign: TextAlign.center, style: theme.textTheme.bodySmall),
           ],
         ),

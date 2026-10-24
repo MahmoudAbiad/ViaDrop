@@ -1,6 +1,9 @@
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:viadrop/core/transfer.dart';
+import 'package:viadrop/core/vault.dart';
 import 'package:viadrop/engines/physical.dart';
 import 'package:viadrop/third_party/onesend/fountain.dart';
 import 'package:viadrop/third_party/onesend/protocol.dart';
@@ -65,4 +68,68 @@ void main() {
     expect(decoder.add(frame), isNull); // Only one of two source blocks.
     expect(decoder.progress, greaterThan(0));
   });
+
+  for (final channel in [Channel.qr, Channel.audio]) {
+    test('encrypted ${channel.name} frames restore the original file end-to-end', () async {
+      final directory =
+          await Directory.systemTemp.createTemp('viadrop-${channel.name}-e2e-');
+      final token = CancelToken();
+      try {
+        final original = File('${directory.path}/original.bin');
+        final content = List<int>.generate(
+          channel == Channel.audio ? 64 : 970,
+          (i) => (i * 29 + 11) % 256,
+        );
+        await original.writeAsBytes(content);
+        final encrypted = File('${directory.path}/encrypted.vdp');
+        const passphrase = 'this-is-an-offline-test-password';
+        await Vault.seal(original, encrypted, passphrase, CancelToken());
+
+        final decoder = PhysicalDecoder(
+          channel == Channel.audio ? 4096 : 512 * 1024,
+        );
+        Uint8List? completedEnvelope;
+        var frames = 0;
+        final engine = PhysicalEngine(
+          channel,
+          emit: (packet) async {
+            frames++;
+            // QR capture and acoustic decoding can both lose individual frames.
+            if (frames % 9 == 0) return;
+            final decoded = decoder.add(packet);
+            if (decoded != null) {
+              completedEnvelope = decoded;
+              token.cancelled = true;
+            }
+          },
+        )
+          ..blockLength = 180
+          ..fps = 60;
+
+        await expectLater(
+          engine.send(encrypted, null, token, (_, __) {}),
+          throwsA(isA<TransferCancelled>()),
+        );
+        expect(frames, greaterThan(0));
+        expect(completedEnvelope, isNotNull);
+        expect(
+          completedEnvelope,
+          orderedEquals(await encrypted.readAsBytes()),
+        );
+
+        final transported = File('${directory.path}/transported.vdp');
+        await transported.writeAsBytes(completedEnvelope!);
+        final output = await Vault.open(
+          transported,
+          Directory('${directory.path}/received'),
+          passphrase,
+          CancelToken(),
+        );
+        expect(await output.readAsBytes(), orderedEquals(content));
+      } finally {
+        token.cancelled = true;
+        await directory.delete(recursive: true);
+      }
+    }, timeout: const Timeout(Duration(seconds: 40)));
+  }
 }
