@@ -51,3 +51,16 @@ barcode-only scanner interface cannot provide that by changing a QR color.
 There is no defensible "fastest in the world" claim without a defined device,
 channel, test protocol and independent comparison. Wi-Fi, optics and acoustics
 must be compared within their own physical constraints.
+
+## Commercial integration route clarified
+
+Mozilla's official FAQ Q1/Q8/Q11 and the MPL 2.0 Larger Work provisions allow
+combining covered files with separate proprietary files, subject to the actual
+license requirements. A libcimbar adapter is therefore a viable candidate, not
+an automatic blocker. Preserve notices, identify the covered source and any
+changes at an accessible source location, and keep application files distinct.
+An arbitrary wrapper or process boundary does not waive any component's terms.
+Audit its transitive dependencies before selecting this route. No libcimbar code
+is incorporated by the four-QR commit; color integration is not yet implemented.
+Primary sources: https://www.mozilla.org/en-US/MPL/2.0/FAQ/ and
+https://github.com/sz3/libcimbar/blob/master/LICENSE .
