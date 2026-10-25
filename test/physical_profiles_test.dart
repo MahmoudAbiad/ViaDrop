@@ -81,7 +81,7 @@ void main() {
     expect(OneWaySession.parse(
       fast.announcement.replaceFirst('VDS3:', 'VDS2:'),
     ), isNull);
-    expect(() => OneWaySession.create(profileId: 'qr-ultra'),
+    expect(() => OneWaySession.create(profileId: 'not-a-profile'),
         throwsArgumentError);
   });
 }
