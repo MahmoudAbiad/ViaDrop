@@ -29,7 +29,15 @@ extern "C" int vd_color_encode(const uint8_t* packet,size_t n,uint8_t* rgb,size_
   configure();int w=0,h=0;if(vd_color_dimensions(&w,&h)!=0)return -3;
   const size_t required=static_cast<size_t>(w)*h*3;
   if(cap<required)return -2;
-  std::string payload(header+n,'\0');auto p=reinterpret_cast<uint8_t*>(payload.data());
+  // Fill every data/ECC block. A mostly empty color image is a poor
+  // calibration target; padding is transport filler, never an encryption key.
+  const size_t frameBytes=cimbar::Config::capacity() /
+      cimbar::Config::ecc_block_size() *
+      (cimbar::Config::ecc_block_size()-cimbar::Config::ecc_bytes());
+  if(frameBytes<header+n)return -1;
+  std::string payload(frameBytes,'\0');
+  for(size_t i=0;i<frameBytes;i++)payload[i]=static_cast<char>((i*73+i/11+19)&255);
+  auto p=reinterpret_cast<uint8_t*>(payload.data());
   std::memcpy(p,"VDCL",4);put(p+4,n);put(p+8,crc(packet,n));std::memcpy(p+header,packet,n);
   std::istringstream source(payload,std::ios::binary);Encoder encoder(4,2);
   auto image=encoder.encode_next(source);

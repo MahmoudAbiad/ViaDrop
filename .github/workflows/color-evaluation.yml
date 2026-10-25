@@ -12,9 +12,13 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
       - name: Install host evaluation prerequisites
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends cmake g++ git python3 default-jdk-headless libopencv-dev libglfw3-dev libgles2-mesa-dev
+          sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update
+          sudo apt-get install -y --no-install-recommends cmake g++ git python3 libopencv-dev libglfw3-dev libgles2-mesa-dev
       - name: Build pinned engine and test colored image round trips
         run: bash tools/cimbar/evaluate.sh
