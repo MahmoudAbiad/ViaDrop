@@ -49,3 +49,18 @@ It does not prove on-phone CPU performance, optical robustness or patent clearan
   removes license obligations. ViaDrop-specific independent files remain separate.
 
 Primary license guidance: https://www.mozilla.org/en-US/MPL/2.0/FAQ/ .
+
+## Recorded host result — 2026-10-25
+
+GitHub Actions run https://github.com/MahmoudAbiad/ViaDrop/actions/runs/40186728560
+completed successfully for checkpoint a22f023. The pinned `encoder_test` executable
+reported **17 assertions passed in 2 test cases**, covering fountain padding and
+streaming via color images. No camera, Android device or throughput was tested.
+
+Compiler/linker warnings require follow-up before shipping: an upstream test
+helper uses `tmpnam`; the bundled zstd header/filename path triggered a GCC
+`-Wstringop-overflow` warning after inlining. These warnings are not confirmed
+exploitable vulnerabilities. Investigate with bounded malformed-input tests and
+sanitizers; avoid importing the filename/decompression sink into ViaDrop. Prefer
+updating or replacing the affected dependency/path with regression coverage.
+No new APK contains CIMBAR at this checkpoint.
