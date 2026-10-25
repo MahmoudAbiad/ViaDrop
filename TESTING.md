@@ -95,3 +95,11 @@ Both phones must select the same mode. Fast mode is audible only.
 Physical tests must now additionally exercise Android CPU load/backlog behavior,
 room echo, frequency response, microphone gain and sample-clock drift. These
 were not modeled comprehensively by the deterministic simulation.
+
+## Ultra receiver regression coverage
+
+`ultra_reconstruction_test.dart` exercises the complete Base45 → packet CRC →
+fountain reconstruction path with 2400-byte blocks, including a 512 KiB payload,
+late join, 25% frame loss, duplicate/reordered frames and corrupted packets.
+It also covers oversized Base45/base64 input rejection and subsequent valid input.
+These simulations do not establish optical throughput or camera readability.

@@ -59,6 +59,7 @@ class PhysicalDecoder {
    decoder=null;
    completedBytes=0;
    validFrames=0;
+   _rxClock.stop();
    _rxClock.reset();
    rejectedFrames++;
    throw const FormatException('Payload checksum failed');

@@ -26,9 +26,13 @@ String encodeQrFrame(Uint8List data) {
 }
 
 Uint8List? decodeQrFrame(String raw) {
+  // Bound scanner/untrusted text before substring, normalization or allocation.
+  // 2600 wire bytes need at most 3900 Base45 characters, plus the prefix.
+  if (raw.length > 3905) return null;
   if (raw.startsWith('VDQR:')) {
     try {
-      return base64Url.decode(base64Url.normalize(raw.substring(5)));
+      final bytes = base64Url.decode(base64Url.normalize(raw.substring(5)));
+      return bytes.length <= 2600 ? bytes : null;
     } on FormatException {
       return null;
     }
