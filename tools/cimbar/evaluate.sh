@@ -23,3 +23,11 @@ cmake -S "$work/source" -B "$work/build" -DCMAKE_BUILD_TYPE=Release -DCMAKE_INTE
 cmake --build "$work/build" --target encoder_test --parallel 2
 # Synthetic color images only; no claims about real cameras or throughput.
 "$work/build/build/src/lib/encoder/test/encoder_test" 'EncoderRoundTripTest/testFountain.Pad,EncoderRoundTripTest/testStreaming'
+# Exercise ViaDrop's independent, file-free RGB adapter against the same pin.
+cmake -S "$root/components/color_codec" -B "$work/adapter" -DCIMBAR_SOURCE="$work/source" -DCMAKE_BUILD_TYPE=Release
+cmake --build "$work/adapter" --target color_adapter_test viadrop_color_jni --parallel 2
+"$work/adapter/color_adapter_test"
+
+mkdir -p "$work/classes"
+javac -d "$work/classes" "$root/components/color_codec/java/app/viadrop/color/"*.java
+java -Djava.library.path="$work/adapter" -cp "$work/classes" app.viadrop.color.CodecSmoke
