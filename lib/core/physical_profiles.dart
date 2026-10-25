@@ -13,6 +13,7 @@ class PhysicalProfile {
     this.qrFps = 0,
     this.qrBlockBytes = 0,
     this.qrVersion = 13,
+    this.qrTiles = 1,
     this.audioBlockBytes = 0,
     this.audioFrameGapMs = 180,
     this.audioFast = false,
@@ -22,7 +23,7 @@ class PhysicalProfile {
   final String id, title, description;
   final PhysicalMedium medium;
   final bool implemented, audioFast, audioHigh;
-  final int qrFps, qrBlockBytes, qrVersion, audioBlockBytes, audioFrameGapMs;
+  final int qrFps, qrBlockBytes, qrVersion, qrTiles, audioBlockBytes, audioFrameGapMs;
 }
 
 const physicalProfiles = <PhysicalProfile>[
@@ -31,6 +32,12 @@ const physicalProfiles = <PhysicalProfile>[
     title: 'Ultra Optical • مختبري',
     description: 'QR إصدار 40: حمولة 2400 بايت وإرسال 30 رمزاً/ثانية. يتطلب شاشة عالية الدقة، كاميرا سريعة، واختبار استقبال فعلي.',
     qrFps: 30, qrBlockBytes: 2400, qrVersion: 40,
+  ),
+  PhysicalProfile(
+    id: 'qr-grid', medium: PhysicalMedium.qr,
+    title: 'Multi-QR 2×2 • مختبري',
+    description: 'أربعة رموز مستقلة في الشاشة، 512 بايت لكل رمز و10 تحديثات/ثانية. قد يكون أبطأ إذا صعب مسح الرموز الصغيرة؛ لا توجد سرعة مضمونة.',
+    qrFps: 10, qrBlockBytes: 512, qrVersion: 17, qrTiles: 4,
   ),
   PhysicalProfile(
     id: 'qr-dense', medium: PhysicalMedium.qr,
@@ -145,7 +152,7 @@ class PhysicalCapabilities {
       if (!camera) {
         return const ProfileAvailability(false, 'لا توجد كاميرا متاحة');
       }
-      if (p.id == 'qr-ultra' &&
+      if ((p.id == 'qr-ultra' || p.id == 'qr-grid') &&
           (cameraMaxFps < 30 || displayHz < 59 ||
               displayWidthPx < 900 || androidSdk < 26 ||
               processorCores < 4)) {

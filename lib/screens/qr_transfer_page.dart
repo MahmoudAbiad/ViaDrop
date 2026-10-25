@@ -61,6 +61,7 @@ class _QrTransferPageState extends State<QrTransferPage> {
   bool _scanBusy = false;
   int _countdown = 0;
   String? _frame;
+  List<String> _tileFrames = [];
   String _message = 'انقل الملفات بالكاميرا فقط، دون شبكة أو مسح متبادل.';
   double _progress = 0;
 
@@ -214,12 +215,21 @@ class _QrTransferPageState extends State<QrTransferPage> {
       final engine = PhysicalEngine(
         Channel.qr,
         sessionId: session.sessionId,
+        emitBatch: (packets) async {
+          if (!token.cancelled && mounted) {
+            setState(() {
+              _tileFrames = packets.map(encodeQrFrame).toList();
+              _frame = _tileFrames.first;
+            });
+          }
+        },
         emit: (Uint8List packet) async {
           if (!token.cancelled && mounted) {
             setState(() => _frame = encodeQrFrame(packet));
           }
         },
       )..fps = physicalProfileById(session.profileId)!.qrFps
+       ..qrTiles = physicalProfileById(session.profileId)!.qrTiles
        ..blockLength = physicalProfileById(session.profileId)!.qrBlockBytes;
       await engine.send(encrypted, null, token, (_, __) {});
     } on TransferCancelled {
@@ -349,7 +359,7 @@ class _QrTransferPageState extends State<QrTransferPage> {
       errorCorrectionLevel: QrErrorCorrectLevel.M, size: 306),
   );
 
-  Widget _dataQr(String data) {
+  Widget _dataQr(String data, {bool tile = false}) {
     final version = _session == null ? 13 :
         (physicalProfileById(_session!.profileId)?.qrVersion ?? 13);
     final qr = QrCode(version, QrErrorCorrectLevel.L)
@@ -361,7 +371,7 @@ class _QrTransferPageState extends State<QrTransferPage> {
       child: RepaintBoundary(
         child: QrImageView.withQr(
           qr: qr,
-          size: version == 40
+          size: tile ? double.infinity : version == 40
               ? MediaQuery.sizeOf(context).width - 48
               : 324,
         ),
@@ -440,7 +450,13 @@ class _QrTransferPageState extends State<QrTransferPage> {
             else if (_frame == null)
               const Center(child: CircularProgressIndicator())
             else
-              _dataQr(_frame!),
+              if ((physicalProfileById(_session!.profileId)?.qrTiles ?? 1) == 4)
+                AspectRatio(aspectRatio: 1, child: GridView.count(
+                  crossAxisCount: 2, physics: const NeverScrollableScrollPhysics(),
+                  children: _tileFrames.map((data) => _dataQr(data, tile: true)).toList(),
+                ))
+              else
+                _dataQr(_frame!),
             const LinearProgressIndicator(),
           ],
         ] else ...[

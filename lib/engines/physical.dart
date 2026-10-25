@@ -85,8 +85,10 @@ Uint8List? decodeQrCapture(PhysicalDecoder decoder, Iterable<String?> rawValues)
  return null;
 }
 class PhysicalEngine extends TransferEngine {
- PhysicalEngine(this.channel,{required this.emit,this.startListening,this.stopListening,this.sessionId});
+ PhysicalEngine(this.channel,{required this.emit,this.startListening,this.stopListening,this.sessionId,this.emitBatch});
  @override final Channel channel;final int? sessionId;final Future<void> Function(Uint8List) emit;final Future<void> Function()? startListening,stopListening;
+ final Future<void> Function(List<Uint8List>)? emitBatch;
+ int qrTiles=1;
  int fps=6,blockLength=300,audioBlockLength=100,audioFrameGapMs=180;bool paused=false;CancelToken? _token;
  @override Capabilities get capabilities=>Capabilities(pause:true,resume:true,maxBytes:channel==Channel.audio?64*1024:512*1024);
  @override Future<bool> checkAvailability()async=>true;
@@ -99,8 +101,17 @@ class PhysicalEngine extends TransferEngine {
   final enc=LTEncoder(payload:payload,blockLength:length,sessionId:id);final checksum=crc32(payload);var seq=0;
   while(!token.cancelled){
    if(paused){await Future<void>.delayed(const Duration(milliseconds:100));continue;}
-   await emit(packFrame(FrameHeader(sessionId:id,sequence:seq,blockCount:enc.blockCount,blockLength:length,totalLength:payload.length,payloadChecksum:checksum),enc.encode(seq)));
-   progress(++seq,enc.blockCount);await Future<void>.delayed(Duration(milliseconds:channel==Channel.audio?audioFrameGapMs:1000~/fps));
+   final tiles=channel==Channel.qr?qrTiles:1;
+   if(tiles!=1&&tiles!=4)throw ArgumentError('Unsupported QR tile count');
+   if(tiles>1&&emitBatch==null)throw StateError('Batch display unavailable');
+   final packets=<Uint8List>[];
+   for(var tile=0;tile<tiles;tile++){
+    token.check();
+    packets.add(packFrame(FrameHeader(sessionId:id,sequence:seq,blockCount:enc.blockCount,blockLength:length,totalLength:payload.length,payloadChecksum:checksum),enc.encode(seq)));
+    seq++;
+   }
+   if(tiles>1){await emitBatch!(packets);}else{await emit(packets.single);}
+   progress(seq,enc.blockCount);await Future<void>.delayed(Duration(milliseconds:channel==Channel.audio?audioFrameGapMs:1000~/fps));
   }token.check();
  }
  @override Future<void> pause()async{paused=true;}
