@@ -1,0 +1,20 @@
+{
+  "repository": "https://github.com/sz3/libcimbar",
+  "revision": "156fbb9c675ca9641f6559922b7025a0f2ee8125",
+  "scope": "Candidate evaluation only; no CIMBAR binaries or source shipped in APK",
+  "license_files": {
+    "LICENSE": "32ee9dbf6196874fc9d406c54a888a6c4cbb9aa4a7f35b46befeaff43a78fe85",
+    "src/third_party_lib/PicoSHA2/LICENSE": "6c30eb1f37554ec4199cb82a8c86d9e7a852da78a757832bebb03ac9ddc44ff1",
+    "src/third_party_lib/base91/LICENSE": "bdd922c2980aa277d75287b4782a16264d600bb44f6805c304512f8105dd8b85",
+    "src/third_party_lib/concurrentqueue/LICENSE.md": "22331571e5e3dbe4c79ad715e23127bdf3beabd75052c953ddabf191ef799e14",
+    "src/third_party_lib/cxxopts/LICENSE": "aa324fbe633a96546bebca975fbbab65caa175894bd00cfa13d7335e7363400c",
+    "src/third_party_lib/fmt/LICENSE": "07580f2a3b35709ce703d523f447b242f6dfec7582a8c0df102c7fa2849375f8",
+    "src/third_party_lib/intx/LICENSE": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "src/third_party_lib/libcorrect/LICENSE": "135138cd4304aa637836758dc5edfb5f21b7d09ecc637d25288d206b151a5768",
+    "src/third_party_lib/libpopcnt/LICENSE": "09266b467b3307c41b4b004874103d1d91ee804ed8ca9f3a3f8c51ee961e8f12",
+    "src/third_party_lib/stb/LICENSE": "bebfe904b14301657e4e5d655c811d51fd31b97c455b9cc2d8600d6bac6cff63",
+    "src/third_party_lib/wirehair/LICENSE": "9d8ec1fd0a0098858edb9d97342c917277cddcde8c5bbe4ae48608d6ba377640",
+    "src/third_party_lib/zstd/COPYING": "f9c375a1be4a41f7b70301dd83c91cb89e41567478859b77eef375a52d782505",
+    "src/third_party_lib/zstd/LICENSE": "7055266497633c9025b777c78eb7235af13922117480ed5c674677adc381c9d8"
+  }
+}

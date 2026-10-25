@@ -1,0 +1,20 @@
+name: CIMBAR isolated color evaluation
+on:
+  push:
+    branches: [main]
+    paths: ['tools/cimbar/**', '.github/workflows/color-evaluation.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  color-codec-roundtrip:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install host evaluation prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake g++ git python3 libopencv-dev libglfw3-dev libgles2-mesa-dev
+      - name: Build pinned engine and test colored image round trips
+        run: bash tools/cimbar/evaluate.sh
