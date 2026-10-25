@@ -55,6 +55,9 @@ extern "C" int vd_color_decode(const uint8_t* rgb,size_t n,int w,int h,size_t st
   configure();cv::Mat view(h,w,CV_8UC3,const_cast<uint8_t*>(rgb),stride),image;
   if(rectified){if(w!=static_cast<int>(cimbar::Config::image_size_x())||h!=static_cast<int>(cimbar::Config::image_size_y()))return -1;image=view;}
   else{Extractor extractor;if(extractor.extract(view,image)==Extractor::FAILURE)return -3;}
+  // Some upstream cell readers traverse pixels linearly. Normalize padded
+  // camera rows to contiguous RGB before handing the image to that code.
+  if(!image.isContinuous())image=image.clone();
   std::stringstream output(std::ios::in|std::ios::out|std::ios::binary);Decoder decoder;
   decoder.decode(image,output,false);const auto raw=output.str();
   if(raw.size()<header||raw.compare(0,4,"VDCL")!=0)return -3;
