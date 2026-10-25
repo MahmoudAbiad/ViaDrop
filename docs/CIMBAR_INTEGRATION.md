@@ -64,3 +64,18 @@ exploitable vulnerabilities. Investigate with bounded malformed-input tests and
 sanitizers; avoid importing the filename/decompression sink into ViaDrop. Prefer
 updating or replacing the affected dependency/path with regression coverage.
 No new APK contains CIMBAR at this checkpoint.
+
+## RGB/JNI adapter result — 2026-10-26 (Asia/Damascus)
+
+Run https://github.com/MahmoudAbiad/ViaDrop/actions/runs/40246506269 passed for
+32ba708. The original C++ adapter restored 1/100/4096-byte packets from
+1024×1024 RGB images, including padded row strides. It rejected truncated and
+invalid buffers. Java loaded the shared JNI library and passed the same packet
+round trips and JNI malformed-input checks on the host JVM.
+
+Fixes established by the regression runs: generate complete ECC data frames,
+use the upstream-supported memory stream, and normalize non-contiguous RGB
+rows before upstream cell readers traverse pixels. The application remains
+separate from this MPL-2.0 component. This is not an Android ABI build, a camera
+test, or an on-device throughput result. Android camera capture, YUV conversion,
+rotation/lifecycle handling, cross-compilation and Flutter display remain pending.
