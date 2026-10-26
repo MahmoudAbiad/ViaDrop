@@ -40,3 +40,19 @@ The receiver runs bounded OFDM work on a separate worker so it does not block
 AudioRecord. All files still pass through the same encrypted fountain transport
 and final SHA-256 verification. Users select fast/slow audio explicitly; no
 network transport is called in either path.
+
+
+## Native color optical path
+
+The proprietary Flutter controller injects ColorOptical.present into the same
+PhysicalEngine packet producer. ColorBridge owns textures and the isolated
+MPL-2.0 ColorFrameRenderer/ColorCameraSession via narrow Java APIs. The native
+codec never receives a path or file-saving responsibility. The receiving camera
+hands raw packet bytes through a separate event channel, tagged with its native
+generation, to PhysicalDecoder; the manager still verifies before saving.
+There is no socket or radio operation in this color data path.
+
+Camera and display resources release asynchronously; Flutter awaits cleanup
+before opening another native session. A camera start first relinquishes the
+MobileScanner instance used for the invitation. Backgrounding cancels the
+color session. Application restart/resume of a partial transfer is not claimed.

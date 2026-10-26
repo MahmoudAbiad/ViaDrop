@@ -28,7 +28,9 @@ The device probe is exposed by `MainActivity.kt` as
 
 | Profile ID | Role | Native implementation | Selection |
 | --- | --- | --- | --- |
-| `qr-ultra` | camera | Not built | Always disabled |
+| `qr-ultra` | camera | Fountain+QR v40, 2400-byte blocks, up to 30 FPS | Android >=8, >=4 cores, 900px screen, camera >=30 FPS and display ~60 Hz |
+| `qr-color` | camera | Native CIMBAR mode 4, 2400-byte fountain blocks, 100ms minimum gap plus actual encode time | Codec present, Android >=6, >=4 cores, camera >=15 FPS; sender additionally needs 1080px display; camera output checked at start |
+| `qr-grid` | camera | Four independent QR v17 tiles, 512 bytes/tile, 10 screen updates/s | Same preliminary hardware gate as Ultra |
 | `qr-dense` | camera | Fountain+QR v17, 512-byte blocks, 9 FPS (experimental) | Camera >=30 FPS and display ~60 Hz |
 | `qr-fast` | camera | Fountain+QR v13, 320-byte blocks, 7 FPS | Camera >=30 FPS and display >=50 Hz |
 | `qr-standard` | camera | Fountain+QR v13, 280-byte blocks, 5 FPS | Camera present |
@@ -72,7 +74,7 @@ Do not send sensitive documents through these one-way physical modes.
   sequence model. Record these metrics on both Android 6 and modern phones.
 - User-permitted persistence of a previously validated (rather than merely
   detected) mode
-- High-speed native camera decoder, alternative QR densities, new OFDM modulation, real negotiation
+- On-device tuning of the implemented native color decoder and QR densities; new OFDM modulation; real negotiation
   (which is impossible without a reverse channel)
 
 ## Manual smoke checks
@@ -90,3 +92,18 @@ Do not send sensitive documents through these one-way physical modes.
   message. Do not broadcast any ACK.
 - Retry the capability probe after a denied permission/error.
 - Test cancellation, return to screen, and wrong versions of the APK.
+
+
+## Color camera handoff
+
+For `qr-color`, MobileScanner scans only the opening QR. The active scanner is
+stopped and removed before Camera2 starts, avoiding simultaneous camera owners.
+Camera2 acquires YUV pixels and passes native decoded packet bytes directly to
+the fountain decoder; it does not convert colored frames into QR strings.
+The native generation appears in every event and is checked by Flutter before
+accepting data. A new transfer always uses a new one-way session ID.
+
+The receiver explicitly chooses a limited-range BT.601 or BT.709 calibration;
+there is no assertion that every camera uses the default. A phone with a 720px
+screen may receive from a 1080px sender if its camera output configuration works.
+Physical J7/A24 compatibility and usable goodput are still unverified.

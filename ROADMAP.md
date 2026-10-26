@@ -12,5 +12,6 @@
 7. Independent protocol/security review; protect production signing and validate
    Play requirements before any store publication (requires fresh authorization).
 
-Persistent cross-restart resume, Wi-Fi Direct and colored optical transport are
-not supported and are not advertised as implemented.
+Persistent cross-restart resume and Wi-Fi Direct are not supported. Colored
+optical transport is now implemented and packaged experimentally; measured
+physical reception/performance and runtime lifecycle validation remain pending.

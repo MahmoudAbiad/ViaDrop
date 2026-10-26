@@ -3,8 +3,8 @@
 This component is explicitly licensed MPL-2.0 (see LICENSE). It is separate
 from the proprietary Flutter application. It builds against the exact CIMBAR
 source pin audited in tools/cimbar/source.json, without copying upstream code
-into ViaDrop application files. Full selected-dependency distribution review
-remains necessary before any APK ships this component.
+into ViaDrop application files. Full selected-dependency commercial release review remains a release gate.
+Experimental APK builds retain original dependency notices and an exact covered-source artifact.
 
 `codec.h` exposes caller-owned RGB buffers and packets up to 4096 bytes. The
 VDCL frame wrapper carries length and CRC-32, not encryption. Feed encrypted
@@ -18,13 +18,13 @@ Host C++/JVM tests are separate from the Android ARM32/ARM64 cross-builds.
 Neither is a physical camera runtime test. RGB
 rows can be padded; YUV-to-RGB conversion and rotation are implemented and tested separately.
 Camera scheduling and generation cancellation are implemented in the Android
-session below. Flutter display/session binding remains pending. Never encode
-or decode on the Flutter/Android UI thread. No color option is enabled in the app.
+session below. Flutter display/session binding is implemented through the app ColorBridge. Never encode
+or decode on the Flutter/Android UI thread. The app exposes an explicitly experimental qr-color option with role-specific gates.
 
 CI exercises binary packets, stride padding, malformed buffers and bounds.
 Passing host tests does not establish camera robustness, transfer rate, Android
-compilability or distribution clearance. The production Android CMake project
-intentionally does not yet include this component.
+compilability or distribution clearance. The Android app CMake project now includes this component when pinned inputs
+are supplied by tools/cimbar/prepare-app.sh and configure-gradle.py.
 
 `Yuv420Rgb` converts bounded planar/interleaved YUV420 buffers with explicit
 row/pixel strides, buffer offsets, and 0/90/180/270-degree rotation. Matrix
@@ -63,8 +63,15 @@ Use close(onReleased) before releasing the caller Surface. An onPresented event
 only means display submission, not successful reception or measured goodput.
 
 These classes use only API23 interfaces and are checked in a dedicated quick
-CI job before the native matrix completes. Camera permission, pixel dimensions,
-physical orientation, explicit color matrix, SurfaceTexture ownership and app
-pause/resume must be supplied by the upcoming Flutter platform binding. Neither
-class is packaged into the application yet. No physical device runtime result
+CI job before the native matrix completes. The Flutter/Android binding now supplies camera permission flow, output size,
+sensor/display rotation, explicit user-selected color matrix and SurfaceTexture
+ownership, and stops on app pause. Both classes are packaged in the test APKs. No physical device runtime result
 is claimed, and lifecycle behavior still requires instrumented/device tests.
+
+
+The app packaging step retains the official OpenCV SDK's supplied notices and
+pinned NDK notices in Android and Flutter assets. The source archive includes
+this complete component, pinned libcimbar source, build tools and notices. The
+application's independent proprietary source is not part of that covered-source
+archive. SDK notice retention is not a blanket legal clearance for all product
+dependencies; see the project's release audit gate.

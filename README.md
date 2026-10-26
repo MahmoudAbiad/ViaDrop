@@ -2,7 +2,7 @@
 
 **Share beyond connections. — شاركها بأي طريقة.**
 
-Experimental Android Flutter/Dart application with Kotlin and native ggwave audio.
+Experimental Android Flutter/Dart application with Kotlin, native ggwave/OFDM audio and an isolated CIMBAR color codec.
 The owner authorized public repository visibility; ViaDrop remains proprietary.
 Third-party components retain their respective licenses.
 
@@ -18,6 +18,10 @@ Implemented paths:
 - Camera-only Base45 QR frames: **one static start QR** on the sender; scan it
   once on the receiver, then manually start a three-second countdown before
   animated data QRs. No return scan, network, or acknowledgement.
+- Experimental CIMBAR color pixels: the same static QR start, followed by
+  actual encrypted fountain packets encoded into colored screen images.
+  Camera2 YUV frames are decoded natively; reconstructed bytes use the existing
+  integrity/authenticated file-verification path. No network or radio fallback.
 - Speaker-to-microphone audio: **sender broadcasts** a ggwave start message
   followed by OFDM (or slower ggwave) file frames. The receiver only listens,
   with no reply, pairing tones or fingerprint step. Starts repeat if lost.
@@ -38,8 +42,9 @@ broadcast after verifying success on the receiving phone.
 Camera and audio screens now show device-checked profile dropdowns, ordered by
 expected throughput. Implemented modes are enabled only after local capability
 checks; experimental dense QR and low-gap OFDM Turbo are available only
-on eligible devices, while Ultra Optical and new OFDM modulation are not
-implemented. The selector controls
+on eligible devices. Ultra Optical, four simultaneous QR tiles and CIMBAR Color
+are implemented experimental profiles; additional OFDM modulation remains future
+work. The selector controls
 the real QR frame size/speed or acoustic codec, and a VDS3 one-way start packet
 includes the profile ID. Both devices must select the same profile; the receiver
 rejects a mismatched start (no hidden fallback or acoustic acknowledgement).
@@ -64,3 +69,23 @@ their own checks. No physical two-phone result is claimed. See
 Brand assets, full bilingual UX, background lifecycle handling, persistent resume,
 complete dependency/license auditing and physical reliability testing are still
 unfinished. Wi-Fi Direct is not implemented. No backend or account is required.
+
+
+## Color experiment — 0.3.0
+
+`qr-color` is explicitly selected on both phones. Sending requires a 1080px
+screen; receiving does not require a large screen. Android 6 ARM32 can be a
+receiver candidate if the native codec, camera and CPU probe pass. Camera output
+configuration is checked when opening; eligibility is not a verified J7 result.
+Use the receiver's explicit BT.601/BT.709 limited-range calibration selection.
+The mode carries 2400-byte fountain blocks, with a 100ms minimum gap plus actual
+encoding/display time. No measured phone-to-phone speed is available.
+
+The application binding uses a dedicated method/event channel, bounded native
+workers, Flutter textures, session generation filtering and ordered cleanup.
+On app pause it stops rather than silently resuming camera access. The exact
+MPL-covered codec/source and notices follow each APK as a separate Actions
+artifact. App licensing remains proprietary; see LICENSE_AUDIT.md.
+
+See [the two-phone color test procedure](docs/COLOR_DEVICE_TEST.md). Physical
+camera, installation and two-device transfer tests remain unexecuted here.

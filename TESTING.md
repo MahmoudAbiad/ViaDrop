@@ -132,5 +132,35 @@ New device/instrumentation cases, all **not executed**:
 - Reject sub-1024 surfaces; measure memory/CPU/thermal behavior and actual verified
   payload goodput. Test Android6 and modern Android separately where compatible.
 
-No color profile is enabled and no APK contains these new classes yet. Camera
-color matrix selection and Flutter texture/platform binding remain outstanding.
+That isolated checkpoint is superseded by the application integration below;
+its device/instrumentation cases remain unexecuted.
+
+
+## Color application integration — 0.3.0
+
+Implemented code is now linked into both APK build profiles, with a Flutter
+texture sender, native Camera2 receiver, binary packet event channel and the
+existing fountain/AES-GCM/SHA-256 reconstruction path. Role-specific capability
+checks permit an eligible small-screen phone to receive while requiring a
+1080px screen to send. MobileScanner relinquishes the opening-QR camera before
+the native receiver opens it. No network or Bluetooth carrier is present in the
+color data path.
+
+Verified at 3260ca5: both complete APK workflows passed (modern run 40253166435,
+Android6 run 40253166401), including 44 Dart tests and analysis. Artifact inspection
+confirmed the color JNI library, retained JNI class name, Android/Flutter notice
+assets and 16KB ELF load alignment. Later source revisions add full-HD stream
+selection, direction-specific gating, NDK notice retention and APK signature
+verification; final run results are recorded in docs/CIMBAR_INTEGRATION.md.
+
+Color evaluation run 40254519362 at 0d3486b passed all jobs: host round trips,
+Android ARM32/ARM64 cross-builds and the API23 camera/display compile check.
+The host suite includes real packet bytes encoded as colored RGB images,
+synthetic YUV420 subsampling with BT.601 and BT.709, conversion back to RGB,
+and native packet reconstruction. A 1280x1280 synthetic scene also passed
+unrectified extraction. This validates that pixel pipeline, not an optical
+link between physical devices.
+
+No physical Android installation, camera/speaker loopback or two-phone transfer
+was executed. CPU, thermal, battery and sustained goodput are unmeasured. Follow
+[the device procedure](docs/COLOR_DEVICE_TEST.md) before claiming device support.

@@ -22,3 +22,27 @@ this file as complete distribution clearance. Before release record exact resolv
 versions/hashes for both profiles, Android Maven/native artifacts, licenses and
 required notices; replace any incompatible or unlicensed component. Linux-only
 transitive packages must be assessed separately before adding desktop targets.
+
+
+## Experimental color distribution — 0.3.0
+
+- Separate color component: MPL-2.0, full source/build tools retained. Pinned
+  libcimbar source/license hashes are checked before building. The exact source
+  archive is uploaded alongside each test APK, without the independent
+  proprietary application source.
+- Selected OpenCV native targets: core, imgproc, calib3d, imgcodecs, photo and
+  their static dependencies. Official Android SDK 4.10.0 archive SHA-256 is
+  verified. Every SDK-supplied license directory and top-level notice is retained
+  (including notices for optional unused components; retaining a notice does
+  not establish that its component is linked). Choose the BSD option for
+  dual-licensed ittnotify; no GPL option is selected. zstd also uses BSD.
+- Pinned NDK 28.2.13676358 notices are retained for the packaged C++ runtime and
+  compiler support. Generated SOURCE_MANIFEST.json includes notice hashes and
+  exact application/source revision. A full transitive Flutter/Maven audit and
+  reachability review remain required before commercial release.
+- APK distribution must retain source access for the covered component if this
+  repository becomes private again. Do not treat a temporary Actions URL as a
+  permanent source-distribution plan for a store release.
+
+The test APK is not a declaration that legal, security or device acceptance
+criteria for a production product have all passed. No Decimen AGPL code is used.
