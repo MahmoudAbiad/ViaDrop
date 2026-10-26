@@ -138,7 +138,7 @@ class _AudioTransferPageState extends State<AudioTransferPage> with WidgetsBindi
     final profile = _profile!;
     final client = AudioClient();
     _audioClient = client;
-    final note = _text.text.trim();
+    final note = _text.text;
     final selected = _source;
     final token = CancelToken();
     _sendToken = token;
@@ -156,7 +156,7 @@ class _AudioTransferPageState extends State<AudioTransferPage> with WidgetsBindi
       await client.openSender();
       token.check();
       File? input = selected;
-      if (note.isNotEmpty) {
+      if (note.trim().isNotEmpty) {
         generated = File('${_manager.work.path}/audio-note-${DateTime.now().microsecondsSinceEpoch}.txt');
         input = generated;
         await generated.writeAsString(note);

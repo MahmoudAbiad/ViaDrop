@@ -13,7 +13,7 @@ import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.concurrent.ArrayBlockingQueue
-import java.util.concurrent.Executors
+import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -34,7 +34,8 @@ interface AudioCodec {
  */
 class AudioBridge(private val context: Context, engine: FlutterEngine, private val codec: AudioCodec) {
     private val main = Handler(Looper.getMainLooper())
-    private val workers = Executors.newFixedThreadPool(3)
+    private val workers = ThreadPoolExecutor(3, 3, 15L, TimeUnit.SECONDS,
+        ArrayBlockingQueue<Runnable>(4)).apply { allowCoreThreadTimeOut(true) }
     private val lifecycle = NativeSessionState { error -> android.util.Log.e("ViaDropAudio", "Cleanup reply failed", error) }
     private var sink: EventChannel.EventSink? = null
     private var session: Session? = null

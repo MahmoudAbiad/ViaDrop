@@ -41,7 +41,7 @@ void main() {
   test('dispose during verification never publishes an accepted file or history', () async {
     final envelope = File('${root.path}/source.vdp');
     await Vault.seal(input, envelope, 'test-acoustic-secret-123', CancelToken());
-    manager.begin();
+    manager.begin(); manager.update(Phase.waiting);
     final accepting = manager.accept(envelope, 'test-acoustic-secret-123', Channel.audio);
     manager.dispose();
     await expectLater(accepting, throwsA(isA<TransferCancelled>()));
