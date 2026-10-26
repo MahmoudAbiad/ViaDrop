@@ -48,6 +48,16 @@ for name in manifest['license_files']:
     target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(path, target)
 shutil.copy2(root/'components/color_codec/LICENSE', notices/'ViaDrop-color-MPL-2.0.txt')
+# The packaged libc++ runtime/compiler support also retains the exact pinned
+# NDK's notices; SDK notices alone do not cover the C++ runtime.
+ndk = Path(os.environ['ANDROID_HOME'])/'ndk/28.2.13676358'
+ndk_notices = sorted(p for p in ndk.glob('NOTICE*') if p.is_file())
+if not ndk_notices:
+    raise SystemExit('Pinned NDK runtime notices missing; do not distribute')
+for path in ndk_notices:
+    target = notices/'android-ndk'/path.name
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(path, target)
 record = {
     'libcimbar_revision': manifest.get('revision', '156fbb9c675ca9641f6559922b7025a0f2ee8125'),
     'viadrop_revision': os.environ.get('GITHUB_SHA', 'local-build'),
@@ -55,6 +65,8 @@ record = {
     'opencv_version': '4.10.0',
     'opencv_sdk_sha256': '464d55abe64b53af3aeb73197cf4620535abd909916d06e6a8b7c32712013966',
     'opencv_notices': {str(p.relative_to(sdk)): hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(notice_files)},
+    'ndk_version': '28.2.13676358',
+    'ndk_notice_hashes': {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in ndk_notices},
     'selected_opencv_targets': ['core', 'imgproc', 'calib3d', 'imgcodecs', 'photo'],
     'distribution': 'experimental internal APK; full product audit remains a release gate',
 }

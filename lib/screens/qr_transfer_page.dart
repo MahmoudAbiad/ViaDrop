@@ -269,7 +269,8 @@ class _QrTransferPageState extends State<QrTransferPage> with WidgetsBindingObse
     } on TransferCancelled {
       if (mounted) setState(() => _message = 'تم إيقاف البث.');
     } catch (error) {
-      if (mounted) setState(() => _message = 'فشل النقل البصري: $error');
+      if (mounted) setState(() => _message = token.cancelled
+          ? 'تم إيقاف البث.' : 'فشل النقل البصري: $error');
     } finally {
       await _stopColor();
       if (mounted) setState(() { _colorTexture = null; _colorGeneration = null; });

@@ -64,12 +64,12 @@ jobs:
               '    <application android:usesCleartextTraffic="true"', 1)
           manifest.write_text(text)
           PY
+      - name: Install pinned color NDK
+        run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" "ndk;28.2.13676358"'
       - name: Prepare pinned color codec, production Java and license bundle
         run: |
           bash tools/cimbar/prepare-app.sh
           python3 tools/cimbar/configure-gradle.py
-      - name: Install pinned color NDK
-        run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" "ndk;28.2.13676358"'
       - name: Resolve legacy Flutter dependencies
         run: flutter pub get
       - name: Remove generated starter widget test
@@ -89,6 +89,8 @@ jobs:
           APK=build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
           test -s "$APK"
           AAPT="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)/aapt"
+          SIGNER="${AAPT%/aapt}/apksigner"
+          "$SIGNER" verify --verbose --print-certs "$APK"
           "$AAPT" dump badging "$APK" > /tmp/viadrop-legacy-badging.txt
           grep -Fx "sdkVersion:'23'" /tmp/viadrop-legacy-badging.txt
           unzip -Z1 "$APK" | grep -Fx 'lib/armeabi-v7a/libflutter.so'
