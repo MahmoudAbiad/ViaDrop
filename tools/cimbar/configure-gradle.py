@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MPL-2.0
+# Copyright 2026 Mahmoud Abiad
 """Apply color inputs after flutter create; avoid environment-specific repo paths."""
 import os
 from pathlib import Path
@@ -15,7 +17,8 @@ config = '''
                 arguments += listOf(
                     "-DCIMBAR_SOURCE=DEPS/libcimbar",
                     "-DOpenCV_DIR=DEPS/OpenCV-android-sdk/sdk/native/jni",
-                    "-DOpenCV_STATIC=ON"
+                    "-DOpenCV_STATIC=ON",
+                    "-DANDROID_STL=c++_shared"
                 )
                 targets += listOf("viadrop_audio", "viadrop_color_jni")
             }

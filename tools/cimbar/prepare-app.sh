@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: MPL-2.0
+# Copyright 2026 Mahmoud Abiad
 # Reproducible binary inputs plus covered-source/notices for test APK distribution.
 set -euo pipefail
 root=$(cd "$(dirname "$0")/../.." && pwd)

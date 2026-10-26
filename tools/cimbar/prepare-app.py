@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MPL-2.0
+# Copyright 2026 Mahmoud Abiad
 """Prepare original adapter sources and preserve every supplied SDK notice.
 No license is changed; the application's source is excluded from source bundle.
 """
@@ -66,6 +68,7 @@ with tarfile.open(dist/'ViaDrop-color-covered-source.tar.gz', 'w:gz') as archive
     archive.add(root/'components/color_codec', arcname='viadrop-color-codec')
     archive.add(notices, arcname='notices')
     archive.add(root/'tools/cimbar', arcname='build-tools')
+    archive.add(root/'components/color_codec/LICENSE', arcname='build-tools/LICENSE')
 # Include notices in Android's asset tree as well as Flutter's license assets.
 android_assets = root/'android/app/src/main/assets/viadrop-color-notices'
 if android_assets.exists():

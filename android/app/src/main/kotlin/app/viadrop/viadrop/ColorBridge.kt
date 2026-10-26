@@ -93,8 +93,8 @@ class ColorBridge(private val activity: Activity, engine: FlutterEngine) {
                             val chars = manager.getCameraCharacteristics(id)
                             val sizes = chars.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
                                 ?.getOutputSizes(ImageFormat.YUV_420_888) ?: error("YUV capture unavailable")
-                            val size = sizes.filter { it.width.toLong()*it.height in 1_000_000L..2_000_000L }
-                                .maxByOrNull { it.width.toLong()*it.height } ?: error("No supported 1–2 MP camera output")
+                            val size = sizes.filter { minOf(it.width, it.height) >= 720 && it.width.toLong()*it.height <= 2_100_000L }
+                                .maxByOrNull { it.width.toLong()*it.height } ?: error("No supported 720p–1080p camera output")
                             val token = ++generation
                             val entry = registry.createSurfaceTexture()
                             texture = entry

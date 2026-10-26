@@ -70,7 +70,7 @@ public final class ColorCameraSession implements AutoCloseable {
     }
 
     /** Explicit matrix/rotation; never infer that all cameras use BT.601.
-     * Size must be an advertised YUV size, at most 2 MP. A supplied preview
+     * Size must be an advertised YUV size, at most 2.1 MP (including 1920x1080). A supplied preview
      * surface must also have been configured to a supported output size.
      */
     public void start(String cameraId, Size size, Surface preview,
@@ -79,7 +79,7 @@ public final class ColorCameraSession implements AutoCloseable {
         if (closed) throw new IllegalStateException("Camera session disposed");
         if (cameraId == null || size == null || matrix == null ||
             size.getWidth() < 1 || size.getHeight() < 1 ||
-            (long)size.getWidth()*size.getHeight() > 2000000 ||
+            (long)size.getWidth()*size.getHeight() > 2100000 ||
             (clockwiseDegrees != 0 && clockwiseDegrees != 90 && clockwiseDegrees != 180 && clockwiseDegrees != 270) ||
             (preview != null && !preview.isValid())) throw new IllegalArgumentException("Camera configuration");
         long token = generation.incrementAndGet();
