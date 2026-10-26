@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../core/transfer.dart';
@@ -8,9 +7,6 @@ import 'color_optical.dart';
 class NativeBridge {
  static const methods=MethodChannel('app.viadrop/native');
  static final events=const EventChannel('app.viadrop/events').receiveBroadcastStream().asBroadcastStream();
- static Future<void> play(Uint8List data,bool high,{bool fast=false})async=>methods.invokeMethod('audioPlay',{'data':data,'high':high,'fast':fast});
- static Future<void> listen({bool fast=false})async{if(!await Permission.microphone.request().isGranted)throw StateError('Microphone permission denied');await methods.invokeMethod('audioListen',{'fast':fast});}
- static Future<void> stopAudio()async=>methods.invokeMethod('audioStop');
  static Future<Map<dynamic,dynamic>> probePhysicalCapabilities() async {
   final value = await methods.invokeMethod<dynamic>('physicalCapabilities');
   final map = value is Map ? Map<dynamic,dynamic>.from(value) : <dynamic,dynamic>{};

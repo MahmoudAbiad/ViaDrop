@@ -2,7 +2,7 @@ name: CIMBAR isolated color evaluation
 on:
   push:
     branches: [main]
-    paths: ['tools/cimbar/**', 'components/color_codec/**', '.github/workflows/color-evaluation.yml', 'android/app/src/main/java/app/viadrop/viadrop/ColorSessionState.java', 'test/native/ColorSessionStateTest.java', 'tools/test_color_lifecycle.sh']
+    paths: ['tools/cimbar/**', 'components/color_codec/**', '.github/workflows/color-evaluation.yml', 'android/app/src/main/java/app/viadrop/viadrop/NativeSessionState.java', 'test/native/ColorSessionStateTest.java', 'tools/test_color_lifecycle.sh', 'tools/test_native_lifecycle.sh', 'test/native/AudioSessionDrainTest.java', 'android/app/src/main/java/app/viadrop/viadrop/SessionWorkDrain.java']
   workflow_dispatch:
 permissions:
   contents: read
@@ -18,8 +18,8 @@ jobs:
           java-version: '17'
       - name: Install minimum supported Android platform
         run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" "platforms;android-23"'
-      - name: Simulate color session ownership and cancellation
-        run: bash tools/test_color_lifecycle.sh
+      - name: Simulate native session ownership and worker cleanup
+        run: bash tools/test_native_lifecycle.sh
       - name: Compile camera lifecycle and pixel adapters against API23
         run: bash tools/cimbar/android-java-check.sh
   color-codec-roundtrip:

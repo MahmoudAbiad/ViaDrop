@@ -14,7 +14,7 @@ public final class ColorSessionStateTest {
     }
     public static void main(String[] args) throws Exception {
         List<RuntimeException> failures = new ArrayList<>();
-        ColorSessionState state = new ColorSessionState(failures::add);
+        NativeSessionState state = new NativeSessionState(failures::add);
         long first = state.begin(1);
         busy(() -> state.begin(1));
         check(state.isCurrent(first), "Duplicate start cancelled the active transfer");
@@ -72,7 +72,7 @@ public final class ColorSessionStateTest {
         check(wrongThread.get() instanceof IllegalStateException, "Cross-thread state access accepted");
         System.out.println("PASS disposal, idle stop and owner-thread enforcement");
 
-        ColorSessionState ownership = new ColorSessionState(failures::add);
+        NativeSessionState ownership = new NativeSessionState(failures::add);
         long oldToken = ownership.begin(10);
         long oldCleanup = ownership.stopOwned(10, null);
         ownership.finishStop(oldCleanup);
@@ -100,7 +100,7 @@ public final class ColorSessionStateTest {
 
         // Repeated navigation/background cycles must not accumulate waiters or
         // accept an old decoder result after opening the next session.
-        ColorSessionState repeated = new ColorSessionState(failures::add);
+        NativeSessionState repeated = new NativeSessionState(failures::add);
         int[] completions = {0};
         for (int i = 0; i < 10000; i++) {
             long token = repeated.begin(2);

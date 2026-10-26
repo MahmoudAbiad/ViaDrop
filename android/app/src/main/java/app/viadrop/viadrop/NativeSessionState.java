@@ -8,7 +8,7 @@ import java.util.List;
  * Confined to its creating thread (the Android UI thread in production).
  * One cleanup ticket owns resource release; concurrent stop callers join it.
  */
-public final class ColorSessionState {
+public final class NativeSessionState {
     public interface FailureHandler { void onFailure(RuntimeException error); }
     private enum Phase { IDLE, ACTIVE, STOPPING }
     private final Thread owner = Thread.currentThread();
@@ -19,15 +19,15 @@ public final class ColorSessionState {
     private long client;
     private boolean disposed;
 
-    public ColorSessionState(FailureHandler failures) {
+    public NativeSessionState(FailureHandler failures) {
         if (failures == null) throw new IllegalArgumentException("Missing failure handler");
         this.failures = failures;
     }
 
     public long begin(long clientId) {
         requireOwner();
-        if (clientId <= 0) throw new IllegalArgumentException("Invalid color client");
-        if (disposed || phase != Phase.IDLE) throw new IllegalStateException("Color session busy or disposed");
+        if (clientId <= 0) throw new IllegalArgumentException("Invalid native client");
+        if (disposed || phase != Phase.IDLE) throw new IllegalStateException("Native session busy or disposed");
         phase = Phase.ACTIVE;
         client = clientId;
         return ++generation;
@@ -115,6 +115,6 @@ public final class ColorSessionState {
         }
     }
     private void requireOwner() {
-        if (Thread.currentThread() != owner) throw new IllegalStateException("Color session state requires its owner thread");
+        if (Thread.currentThread() != owner) throw new IllegalStateException("Native session state requires its owner thread");
     }
 }

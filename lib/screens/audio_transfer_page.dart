@@ -15,6 +15,7 @@ import '../core/physical_profiles.dart';
 import '../widgets/physical_profile_selector.dart';
 import '../core/transfer.dart';
 import '../engines/native.dart';
+import '../engines/audio_client.dart';
 import '../engines/physical.dart';
 
 /// One-way acoustic transport. Receiver ONLY listens; there is no acoustic
@@ -28,11 +29,14 @@ class AudioTransferPage extends StatefulWidget {
   State<AudioTransferPage> createState() => _AudioTransferPageState();
 }
 
-class _AudioTransferPageState extends State<AudioTransferPage> {
+class _AudioTransferPageState extends State<AudioTransferPage> with WidgetsBindingObserver {
   final _manager = TransferManager();
   final _awake = ScreenAwake.lease();
   final _text = TextEditingController();
   StreamSubscription<dynamic>? _events;
+  AudioClient? _audioClient;
+  Future<void>? _receiveStopping;
+  String? _receiveFailure;
   OneWaySession? _session;
   File? _source;
   int _sourceBytes = 0;
@@ -58,6 +62,7 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     unawaited(_probeCapabilities());
     _manager.initialize().then((_) {
       if (mounted) setState(() => _ready = true);
@@ -115,13 +120,12 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
     }
   }
 
-  Future<File?> _inputFile() async {
-    if (_text.text.trim().isNotEmpty) {
-      final file = File('${_manager.work.path}/audio-note-${DateTime.now().microsecondsSinceEpoch}.txt');
-      await file.writeAsString(_text.text);
-      return file;
-    }
-    return _source;
+  bool _owns(AudioClient client) => mounted && identical(_audioClient, client);
+
+  Future<void> _removeTemporary(File? file) async {
+    if (file == null) return;
+    try { if (await file.exists()) await file.delete(); }
+    on FileSystemException catch (error) { debugPrint('Audio temporary cleanup failed: $error'); }
   }
 
   /// The sender broadcasts the start packet; no answer is expected.
@@ -132,41 +136,57 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
       return;
     }
     final profile = _profile!;
+    final client = AudioClient();
+    _audioClient = client;
+    final note = _text.text.trim();
+    final selected = _source;
     final token = CancelToken();
     _sendToken = token;
     final session = OneWaySession.create(profileId: profile.id);
     _session = session;
-    var wakeLockActive = false;
+    var wakeRequested = false;
     File? encrypted;
+    File? generated;
     setState(() {
       _sending = true;
       _progress = 0;
       _status = 'جارٍ تجهيز الملف، ثم بث رسالة البدء تلقائياً...';
     });
     try {
-      final input = await _inputFile();
+      await client.openSender();
+      token.check();
+      File? input = selected;
+      if (note.isNotEmpty) {
+        generated = File('${_manager.work.path}/audio-note-${DateTime.now().microsecondsSinceEpoch}.txt');
+        input = generated;
+        await generated.writeAsString(note);
+        token.check();
+      }
       if (input == null) throw StateError('لا يوجد ملف للإرسال');
       if (await input.length() > 48 * 1024) {
         throw StateError('الحد التجريبي للنقل الصوتي 48KB.');
       }
+      token.check();
+      client.check();
       _manager.begin();
       encrypted = await _manager.prepare(input, session.passphrase);
       token.check();
       if (await encrypted.length() > 64 * 1024) {
         throw StateError('الملف المشفّر تجاوز 64KB.');
       }
+      token.check(); client.check();
+      wakeRequested = true;
       await _awake.acquire();
-      wakeLockActive = true;
       token.check();
       // The introduction uses audible ggwave even in the OFDM data mode.
       // Repeating it twice and between fountain rounds lets late/missed
       // listeners join without requiring a reverse acoustic channel.
       final hello = session.audioAnnouncement;
-      await NativeBridge.play(hello, false);
+      await client.play(hello, false);
       token.check();
       await Future<void>.delayed(const Duration(milliseconds: 450));
       token.check();
-      await NativeBridge.play(hello, false);
+      await client.play(hello, false);
       token.check();
       _manager.update(Phase.transferring);
       _show('جارٍ بث الملف عبر الصوت. المستقبل يستمع فقط ولا يرد.');
@@ -179,13 +199,13 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
           // Only one speaker is active; periodically announce the session
           // again so dropped start packets don't block the entire transfer.
           if (++frames % 24 == 0) {
-            await NativeBridge.play(hello, false);
+            await client.play(hello, false);
             token.check();
             await Future<void>.delayed(const Duration(milliseconds: 250));
           }
-          await NativeBridge.play(packet, profile.audioHigh, fast: profile.audioFast);
+          await client.play(packet, profile.audioHigh, fast: profile.audioFast);
         },
-        stopListening: NativeBridge.stopAudio,
+        stopListening: client.stop,
       )..audioBlockLength = profile.audioBlockBytes
        ..audioFrameGapMs = profile.audioFrameGapMs;
       await engine.send(encrypted, null, token, (sent, total) {
@@ -196,75 +216,66 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
     } on TransferCancelled {
       _show('أوقفت البث. لا يوجد تأكيد رجوعي من المستقبل.');
     } catch (error) {
-      _show('فشل الإرسال الصوتي: $error');
+      if (_owns(client)) _show(token.cancelled || client.cancelled
+          ? 'تم إيقاف البث.' : 'فشل الإرسال الصوتي: $error');
     } finally {
-      if (wakeLockActive) {
-        try { await _awake.release(); } catch (_) {}
-      }
-      if (encrypted != null && await encrypted.exists()) {
-        await encrypted.delete();
-      }
-      if (mounted) setState(() => _sending = false);
+      try { await client.stop(); } catch (error) { if (_owns(client)) _show('تعذر تحرير الصوت: $error'); }
+      if (wakeRequested) { try { await _awake.release(); } catch (_) {} }
+      await _removeTemporary(encrypted);
+      await _removeTemporary(generated);
+      if (_owns(client)) setState(() => _sending = false);
     }
   }
 
   Future<void> _stopSend() async {
     _sendToken?.cancelled = true;
+    _manager.token.cancelled = true;
+    final client = _audioClient;
     try {
-      await NativeBridge.stopAudio();
+      await client?.stop();
     } catch (error) {
       _show('فشل إيقاف الصوت: $error');
     }
   }
 
   Future<void> _startReceive() async {
-    if (!_ready || _active || !_profileSupported) {
-      _show('الجهاز مشغول أو التقنية غير مدعومة.');
-      return;
-    }
-    setState(() => _listenStarting = true);
+    if (!_ready || _active || !_profileSupported) return;
+    final profile = _profile!;
+    final client = AudioClient();
+    _audioClient = client;
+    _receiveFailure = null;
+    setState(() { _listenStarting = true; _status = 'جارٍ تجهيز الاستماع وطلب إذن الميكروفون عند الحاجة...'; });
     try {
-      _session = null;
-      _result = null;
+      _session = null; _result = null;
       _decoder = PhysicalDecoder(64 * 1024);
-      _manager.begin();
-      _manager.update(Phase.waiting);
-      _events = NativeBridge.events.listen(
-        _handleEvent,
-        onError: (Object error) =>
-            unawaited(_failReceive('خطأ في استقبال الصوت: $error')),
-      );
+      _manager.begin(); _manager.update(Phase.waiting);
+      _events = client.events.listen((event) => _handleEvent(client, event),
+        onError: (Object error) => unawaited(_failReceive(client, 'خطأ في استقبال الصوت: $error')));
       await _awake.acquire();
-      if (!mounted) {
-        await _events?.cancel();
-        _events = null;
-        await _awake.release();
-        return;
-      }
+      client.check();
+      await client.listen(fast: profile.audioFast);
+      if (!_owns(client) || client.cancelled) { await client.stop(); return; }
       setState(() {
-        _receiving = true;
-        _progress = 0;
+        _receiving = true; _progress = 0;
         _status = 'نستمع فقط. اضغط إرسال على الهاتف الثاني.';
       });
-      await NativeBridge.listen(fast: _profile!.audioFast);
-      if (!mounted || !_receiving) {
-        await NativeBridge.stopAudio();
-      }
+    } on TransferCancelled {
+      if (_owns(client)) _show(_receiveFailure ?? 'تم إيقاف الاستماع.');
     } catch (error) {
-      await _stopReceive();
-      _show('تعذّر فتح الميكروفون: $error');
+      await _stopReceive(target: client);
+      if (_owns(client)) _show('تعذّر فتح الميكروفون: $error');
     } finally {
-      if (mounted) setState(() => _listenStarting = false);
+      if (_owns(client)) setState(() => _listenStarting = false);
     }
   }
 
-  void _handleEvent(dynamic event) {
-    if (!_receiving || _finalizing || event is! Map) return;
+  void _handleEvent(AudioClient client, dynamic event) {
+    if (!_owns(client) || client.cancelled || _finalizing || event is! Map) return;
     if (event['type'] == 'error') {
-      unawaited(_failReceive('المودم الصوتي: ${event['message'] ?? 'خطأ'}'));
+      unawaited(_failReceive(client, 'المودم الصوتي: ${event['message'] ?? 'خطأ'}'));
       return;
     }
-    if (event['type'] != 'audioData') return;
+    if (!_receiving || event['type'] != 'audioData') return;
     final raw = event['data'];
     if (raw is! List<int>) return;
     final bytes = Uint8List.fromList(raw);
@@ -279,7 +290,7 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
         final other = physicalProfileById(incoming.profileId);
         if (other?.medium != PhysicalMedium.audio ||
             incoming.profileId != _profileId || !_profileSupported) {
-          unawaited(_failReceive(
+          unawaited(_failReceive(client,
             'المرسل يستخدم ${other?.title ?? incoming.profileId}. '
             'اختر نفس التقنية من القائمة في الجهازين ثم أعد المحاولة.',
           ));
@@ -304,7 +315,7 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
         return;
       }
       _finalizing = true;
-      unawaited(_finishReceive(complete));
+      unawaited(_finishReceive(client, complete));
     } catch (error) {
       if (_decoder.header == null) {
         if (mounted) setState(() {
@@ -317,17 +328,19 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
     }
   }
 
-  Future<void> _failReceive(String message) async {
-    if (!_receiving) return;
-    await _stopReceive();
-    _show(message);
+  Future<void> _failReceive(AudioClient client, String message) async {
+    if (!_owns(client)) return;
+    _receiveFailure = message;
+    await _stopReceive(target: client);
+    if (_owns(client)) _show(message);
   }
 
-  Future<void> _finishReceive(Uint8List encryptedData) async {
+  Future<void> _finishReceive(AudioClient client, Uint8List encryptedData) async {
     File? temp;
     try {
       temp = File('${_manager.work.path}/audio-${DateTime.now().microsecondsSinceEpoch}.vdp');
       await temp.writeAsBytes(encryptedData, flush: true);
+      client.check();
       final received = await _manager.accept(
         temp, _session!.passphrase, Channel.audio,
       );
@@ -339,39 +352,61 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
             'إطارات سليمة: ${_decoder.validFrames}، '
             'إطارات مرفوضة: ${_decoder.rejectedFrames}.';
       });
+    } on TransferCancelled {
+      if (_owns(client)) _show('تم إيقاف الاستقبال قبل اعتماد الملف.');
     } catch (error) {
-      _show('فشل فك التشفير أو فحص سلامة الملف: $error');
+      if (_owns(client)) _show('فشل فك التشفير أو فحص سلامة الملف: $error');
     } finally {
       if (temp != null && await temp.exists()) await temp.delete();
-      await _stopReceive();
-      if (mounted) setState(() => _finalizing = false);
+      await _stopReceive(target: client);
+      if (_owns(client)) setState(() => _finalizing = false);
     }
   }
 
-  Future<void> _stopReceive() async {
-    if (_listenStopping) return;
+  Future<void> _stopReceive({AudioClient? target}) {
+    final client = target ?? _audioClient;
+    if (client == null) return Future<void>.value();
+    if (!identical(client, _audioClient)) return client.stop();
+    return _receiveStopping ??= _drainReceive(client).whenComplete(() => _receiveStopping = null);
+  }
+
+  Future<void> _drainReceive(AudioClient client) async {
     _listenStopping = true;
-    _listenStarting = false;
+    _manager.token.cancelled = true;
     if (mounted) setState(() => _receiving = false);
+    final events = _events;
     try {
-      try { await NativeBridge.stopAudio(); } catch (_) {}
-      await _events?.cancel();
-      _events = null;
+      try { await client.stop(); } catch (error) { if (_owns(client)) _show('تعذر تحرير الميكروفون: $error'); }
+      await events?.cancel();
+      if (identical(_events, events)) _events = null;
       try { await _awake.release(); } catch (_) {}
     } finally {
-      _listenStopping = false;
-      if (mounted) setState(() => _receiving = false);
+      if (identical(_audioClient, client)) {
+        _listenStopping = false; _listenStarting = false;
+        if (mounted) setState(() => _receiving = false);
+      }
     }
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.paused && state != AppLifecycleState.detached) return;
+    if (_sending) { unawaited(_stopSend()); }
+    else if (_active) { unawaited(_stopReceive()); }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _sendToken?.cancelled = true;
-    _events?.cancel();
-    NativeBridge.stopAudio();
+    _manager.token.cancelled = true;
+    unawaited(_events?.cancel());
+    final client = _audioClient;
+    if (client != null) unawaited(client.stop().catchError((Object error) {
+      debugPrint('Audio cleanup failed: $error');
+    }));
     unawaited(_awake.dispose());
-    _text.dispose();
-    _manager.dispose();
+    _text.dispose(); _manager.dispose();
     super.dispose();
   }
 
@@ -464,7 +499,7 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
                 icon: const Icon(Icons.mic),
                 label: const Text('استقبال • استماع صامت'),
               ),
-            if (_receiving)
+            if (_receiving || _listenStarting)
               FilledButton.tonalIcon(
                 onPressed: _stopReceive,
                 icon: const Icon(Icons.mic_off),

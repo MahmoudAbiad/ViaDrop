@@ -25,7 +25,7 @@ class ColorBridge(private val activity: Activity, engine: FlutterEngine) {
     private val main = Handler(Looper.getMainLooper())
     private val registry = engine.renderer
     private var sink: EventChannel.EventSink? = null
-    private val lifecycle = ColorSessionState { error ->
+    private val lifecycle = NativeSessionState { error ->
         android.util.Log.e("ViaDropColor", "Cleanup reply failed", error)
     }
     private var texture: TextureRegistry.SurfaceTextureEntry? = null
