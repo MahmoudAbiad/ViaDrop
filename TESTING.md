@@ -103,3 +103,34 @@ fountain reconstruction path with 2400-byte blocks, including a 512 KiB payload,
 late join, 25% frame loss, duplicate/reordered frames and corrupted packets.
 It also covers oversized Base45/base64 input rejection and subsequent valid input.
 These simulations do not establish optical throughput or camera readability.
+
+
+## Isolated color camera/display checkpoint — 2026-10-26
+
+At 70b178a, the API23 camera session and surface renderer compile check passed
+in Actions run https://github.com/MahmoudAbiad/ViaDrop/actions/runs/40251853246
+(job android-camera-api23). This compiles against Android 6 framework classes;
+it does not run Camera2 or draw to a real Android Surface. YuvSmoke also passed
+locally using the JDK compiler module and JVM: stride/offset/rotation/matrix and
+truncated-plane cases. The unchanged native/host matrix has its own job results.
+
+New device/instrumentation cases, all **not executed**:
+
+- Start, stop during asynchronous open, immediately restart, then dispose;
+  verify camera availability afterward and no stale packet/ready callbacks.
+- Cancel during native extraction; verify Image closes before ImageReader and
+  close(onReleased) runs only after camera/device/image resources are released.
+- Keep main thread busy while capturing; verify at most one packet event waits
+  and one image decodes, without ImageReader exhaustion or growing frame queues.
+- Detach preview, deny/revoke permission, occupy camera in another app, inject
+  disconnect/configuration failure, and background/foreground repeatedly.
+- Encode known binary packets to a real Surface, verify visible frame geometry
+  and payload decoding on the other phone with matching mode/matrix/orientation.
+- Submit frames faster than encoding/display; busy requests must return false,
+  never successful delivery. Cancel/dispose during encode or canvas submission;
+  release Surface only from the cleanup callback.
+- Reject sub-1024 surfaces; measure memory/CPU/thermal behavior and actual verified
+  payload goodput. Test Android6 and modern Android separately where compatible.
+
+No color profile is enabled and no APK contains these new classes yet. Camera
+color matrix selection and Flutter texture/platform binding remain outstanding.

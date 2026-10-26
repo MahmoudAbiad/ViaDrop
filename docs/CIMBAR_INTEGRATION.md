@@ -124,3 +124,14 @@ selection, optics, lifecycle race behavior or on-screen readability. Flutter
 platform channel/texture binding, permission flow, pause/resume, profile gating,
 packaging and the dependency/source distribution bundle remain outstanding.
 No color APK or two-phone test is available from this change.
+
+
+API23 compile validation passed after replacing Java lambdas/method references
+with ordinary callbacks: the Android23 boot classpath lacks MethodHandles.Lookup
+required by javac lambda lowering. See run 40251853246, android-camera-api23, at
+70b178a. This avoids relying on a newer platform boot classpath for the check.
+The camera/display sources now compile directly against the minimum API. No
+runtime compatibility or physical transfer result follows from this check.
+
+The same run also passed the complete ARM32 and ARM64 native cross-build jobs,
+including the new API23 camera/display Java compile check at the end of each.
