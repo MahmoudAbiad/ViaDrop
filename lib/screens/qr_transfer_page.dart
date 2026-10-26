@@ -8,7 +8,8 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:wakelock_plus/wakelock_plus.dart';
+import '../core/screen_awake.dart';
+import '../core/optical_startup.dart';
 
 import '../core/manager.dart';
 import '../core/one_way_session.dart';
@@ -31,6 +32,9 @@ class QrTransferPage extends StatefulWidget {
 
 class _QrTransferPageState extends State<QrTransferPage> with WidgetsBindingObserver {
   final _manager = TransferManager();
+  final _startup = OpticalStartup();
+  final _awake = ScreenAwake.lease();
+  final _colorClient = ColorOpticalClient();
 
   // QR-only scanner configuration. The default mobile_scanner throttle is
   // intended for ordinary barcodes, not a continuously changing data stream.
@@ -80,7 +84,7 @@ class _QrTransferPageState extends State<QrTransferPage> with WidgetsBindingObse
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _colorEvents = ColorOptical.events.listen(_onColorEvent, onError: (Object error) {
+    _colorEvents = _colorClient.events.listen(_onColorEvent, onError: (Object error) {
       if (mounted && _isColor && _active) {
         _stop();
         setState(() => _message = 'تعذر استقبال أحداث الألوان: $error');
@@ -125,10 +129,11 @@ class _QrTransferPageState extends State<QrTransferPage> with WidgetsBindingObse
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _startup.dispose();
     unawaited(_colorEvents?.cancel());
     unawaited(_stopColor());
     _sendToken?.cancelled = true;
-    unawaited(WakelockPlus.disable());
+    unawaited(_awake.dispose());
     _manager.dispose();
     _standardScanner.dispose();
     _streamScanner.dispose();
@@ -155,12 +160,12 @@ class _QrTransferPageState extends State<QrTransferPage> with WidgetsBindingObse
     if (!_ready || _active || _selected == null || !_profileSupported) return;
     setState(() => _busy = true);
     try {
-      await _stopColor();
-      await WakelockPlus.enable();
-      if (!mounted) {
-        await WakelockPlus.disable();
-        return;
-      }
+      final ticket = await _startup.prepare(
+        stopNative: _stopColor,
+        acquireWake: _awake.acquire,
+        releaseWake: _awake.release,
+      );
+      if (!mounted || ticket == null || !_startup.isCurrent(ticket)) return;
       setState(() {
         _session = OneWaySession.create(profileId: _profileId!);
         _received = null;
@@ -169,7 +174,6 @@ class _QrTransferPageState extends State<QrTransferPage> with WidgetsBindingObse
       });
     } catch (error) {
       if (mounted) setState(() => _message = 'تعذر إنشاء الجلسة: $error');
-      try { await WakelockPlus.disable(); } catch (_) {}
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -179,12 +183,12 @@ class _QrTransferPageState extends State<QrTransferPage> with WidgetsBindingObse
     if (!_ready || _active || !_profileSupported) return;
     setState(() => _busy = true);
     try {
-      await _stopColor();
-      await WakelockPlus.enable();
-      if (!mounted) {
-        await WakelockPlus.disable();
-        return;
-      }
+      final ticket = await _startup.prepare(
+        stopNative: _stopColor,
+        acquireWake: _awake.acquire,
+        releaseWake: _awake.release,
+      );
+      if (!mounted || ticket == null || !_startup.isCurrent(ticket)) return;
       setState(() {
         _session = null;
         _received = null;
@@ -194,7 +198,6 @@ class _QrTransferPageState extends State<QrTransferPage> with WidgetsBindingObse
       });
     } catch (error) {
       if (mounted) setState(() => _message = 'تعذر بدء الاستقبال: $error');
-      try { await WakelockPlus.disable(); } catch (_) {}
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -222,7 +225,7 @@ class _QrTransferPageState extends State<QrTransferPage> with WidgetsBindingObse
         throw const FormatException('الملف أكبر من 512KB بعد التشفير.');
       }
       if (physicalProfileById(session.profileId)!.color) {
-        final display = await ColorOptical.startSender();
+        final display = await _colorClient.startSender();
         token.check();
         if (!mounted) throw TransferCancelled();
         setState(() {
@@ -256,7 +259,7 @@ class _QrTransferPageState extends State<QrTransferPage> with WidgetsBindingObse
         emit: (Uint8List packet) async {
           token.check();
           if (physicalProfileById(session.profileId)!.color) {
-            await ColorOptical.present(packet);
+            await _colorClient.present(packet);
             token.check();
           } else if (mounted) {
             setState(() => _frame = encodeQrFrame(packet));
@@ -277,7 +280,7 @@ class _QrTransferPageState extends State<QrTransferPage> with WidgetsBindingObse
       if (encrypted != null && await encrypted.exists()) {
         await encrypted.delete();
       }
-      try { await WakelockPlus.disable(); } catch (_) {}
+      try { await _awake.release(); } catch (_) {}
       if (mounted) setState(() {
         _frame = null;
         _countdown = 0;
@@ -376,12 +379,13 @@ class _QrTransferPageState extends State<QrTransferPage> with WidgetsBindingObse
       if (mounted) setState(() => _message = 'فشل التحقق: $error');
     } finally {
       if (encrypted != null && await encrypted.exists()) await encrypted.delete();
-      try { await WakelockPlus.disable(); } catch (_) {}
+      try { await _awake.release(); } catch (_) {}
       if (mounted) setState(() => _finalizing = false);
     }
   }
 
   void _stop() {
+    _startup.cancel();
     _sendToken?.cancelled = true;
     unawaited(_stopColor());
     if (_sending) {
@@ -396,7 +400,7 @@ class _QrTransferPageState extends State<QrTransferPage> with WidgetsBindingObse
       _scanData = false;
       _message = 'تم إيقاف الجلسة. يمكنك البدء من جديد.';
     });
-    unawaited(WakelockPlus.disable());
+    unawaited(_awake.release());
   }
 
   Widget _staticQr(String data) => Container(
@@ -430,10 +434,10 @@ class _QrTransferPageState extends State<QrTransferPage> with WidgetsBindingObse
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if ((state == AppLifecycleState.paused || state == AppLifecycleState.detached) &&
-        mounted && _isColor && _active) _stop();
+        mounted && _active) _stop();
   }
 
-  Future<void> _stopColor() => _colorStopping ??= ColorOptical.stop()
+  Future<void> _stopColor() => _colorStopping ??= _colorClient.stop()
       .catchError((Object _) {})
       .whenComplete(() => _colorStopping = null);
 
@@ -443,7 +447,7 @@ class _QrTransferPageState extends State<QrTransferPage> with WidgetsBindingObse
         throw StateError('لم تُمنح صلاحية الكاميرا');
       }
       if (!mounted || !_scanData || _session != session) return;
-      final camera = await ColorOptical.startReceiver(_colorMatrix);
+      final camera = await _colorClient.startReceiver(_colorMatrix);
       if (!mounted || !_scanData || _session != session) {
         await _stopColor(); return;
       }
@@ -462,7 +466,7 @@ class _QrTransferPageState extends State<QrTransferPage> with WidgetsBindingObse
         _scanData = false; _colorTexture = null; _colorGeneration = null;
         _message = 'تعذر بدء كاميرا الألوان: $error';
       });
-      unawaited(WakelockPlus.disable());
+      unawaited(_awake.release());
     }
   }
 

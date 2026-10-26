@@ -25,32 +25,51 @@ class ColorBridge(private val activity: Activity, engine: FlutterEngine) {
     private val main = Handler(Looper.getMainLooper())
     private val registry = engine.renderer
     private var sink: EventChannel.EventSink? = null
-    private var generation = 0L
+    private var sinkClient: Long? = null
+    private val lifecycle = ColorSessionState { error ->
+        android.util.Log.e("ViaDropColor", "Cleanup reply failed", error)
+    }
     private var texture: TextureRegistry.SurfaceTextureEntry? = null
     private var surface: Surface? = null
     private var renderer: ColorFrameRenderer? = null
     private var camera: ColorCameraSession? = null
     private var frameResult: MethodChannel.Result? = null
     private var startingResult: MethodChannel.Result? = null
-    private var stopping = false
-    private var disposed = false
+    private var startTimeout: Runnable? = null
 
     init {
         EventChannel(engine.dartExecutor.binaryMessenger, "app.viadrop/color-events")
             .setStreamHandler(object : EventChannel.StreamHandler {
-                override fun onListen(args: Any?, events: EventChannel.EventSink) { sink = events }
-                override fun onCancel(args: Any?) { sink = null; stop(null) }
+                override fun onListen(args: Any?, events: EventChannel.EventSink) {
+                    val client = ((args as? Map<*, *>)?.get("clientId") as? Number)?.toLong()
+                    require(client != null && client > 0) { "Missing color event client" }
+                    sinkClient = client; sink = events
+                }
+                override fun onCancel(args: Any?) {
+                    // Event-channel cancellation may arrive after another screen
+                    // subscribed. It owns only its original client's resources.
+                    val client = ((args as? Map<*, *>)?.get("clientId") as? Number)?.toLong() ?: sinkClient
+                    if (sinkClient == client) { sink = null; sinkClient = null }
+                    if (client != null) stop(null, client)
+                }
             })
         MethodChannel(engine.dartExecutor.binaryMessenger, "app.viadrop/color")
             .setMethodCallHandler { call, result ->
+                // Only this request's successful acquisition may be rolled back.
+                // A rejected duplicate start never owns the active session.
+                var ownedStart: Long? = null
+                fun clientId(): Long {
+                    val client = call.argument<Number>("clientId")?.toLong() ?: error("Missing color client")
+                    check(client > 0) { "Invalid color client" }
+                    return client
+                }
                 try {
                     when (call.method) {
                         "probe" -> result.success(available())
-                        "stop" -> stop { result.success(null) }
+                        "stop" -> stop({ result.success(null) }, clientId())
                         "senderStart" -> {
-                            checkIdle()
                             check(available()) { "Native color codec unavailable" }
-                            val token = ++generation
+                            val token = lifecycle.begin(clientId()).also { ownedStart = it }
                             val entry = registry.createSurfaceTexture()
                             texture = entry
                             entry.surfaceTexture().setDefaultBufferSize(1024, 1024)
@@ -58,10 +77,13 @@ class ColorBridge(private val activity: Activity, engine: FlutterEngine) {
                             surface = output
                             renderer = ColorFrameRenderer(output, object : ColorFrameRenderer.Listener {
                                 override fun onPresented() {
-                                    if (generation == token) { frameResult?.success(true); frameResult = null }
+                                    if (lifecycle.isCurrent(token)) {
+                                        val reply = frameResult; frameResult = null
+                                        reply?.success(true)
+                                    }
                                 }
                                 override fun onError(message: String) {
-                                    if (generation == token) {
+                                    if (lifecycle.isCurrent(token)) {
                                         frameResult?.error("COLOR_DISPLAY", message, null); frameResult = null
                                         event(token, mapOf("type" to "error", "message" to message))
                                     }
@@ -70,6 +92,7 @@ class ColorBridge(private val activity: Activity, engine: FlutterEngine) {
                             result.success(mapOf("generation" to token, "textureId" to entry.id(), "width" to 1024, "height" to 1024))
                         }
                         "senderFrame" -> {
+                            check(lifecycle.owns(clientId())) { "Color frame belongs to another session" }
                             val data = call.argument<ByteArray>("data") ?: error("Missing packet")
                             check(data.isNotEmpty() && data.size <= 4096) { "Invalid packet length" }
                             check(frameResult == null) { "A color frame is already pending" }
@@ -78,7 +101,6 @@ class ColorBridge(private val activity: Activity, engine: FlutterEngine) {
                             if (!output.present(data)) { frameResult = null; result.success(false) }
                         }
                         "receiverStart" -> {
-                            checkIdle()
                             check(available()) { "Native color codec unavailable" }
                             check(activity.checkSelfPermission("android.permission.CAMERA") == PackageManager.PERMISSION_GRANTED) { "Camera permission denied" }
                             val matrix = when (call.argument<String>("matrix")) {
@@ -95,7 +117,7 @@ class ColorBridge(private val activity: Activity, engine: FlutterEngine) {
                                 ?.getOutputSizes(ImageFormat.YUV_420_888) ?: error("YUV capture unavailable")
                             val size = sizes.filter { minOf(it.width, it.height) >= 720 && it.width.toLong()*it.height <= 2_100_000L }
                                 .maxByOrNull { it.width.toLong()*it.height } ?: error("No supported 720p–1080p camera output")
-                            val token = ++generation
+                            val token = lifecycle.begin(clientId()).also { ownedStart = it }
                             val entry = registry.createSurfaceTexture()
                             texture = entry
                             entry.surfaceTexture().setDefaultBufferSize(size.width, size.height)
@@ -107,25 +129,30 @@ class ColorBridge(private val activity: Activity, engine: FlutterEngine) {
                             startingResult = result
                             camera = ColorCameraSession(activity, object : ColorCameraSession.Listener {
                                 override fun onReady(width: Int, height: Int) {
-                                    if (generation != token) return
+                                    if (!lifecycle.isCurrent(token)) return
+                                    cancelStartTimeout()
                                     startingResult?.success(mapOf("generation" to token, "textureId" to entry.id(), "width" to width, "height" to height, "rotation" to rotation))
                                     startingResult = null
                                 }
                                 override fun onPacket(packet: ByteArray) { event(token, mapOf("type" to "packet", "data" to packet)) }
                                 override fun onError(code: String, message: String) {
-                                    if (generation != token) return
+                                    if (!lifecycle.isCurrent(token)) return
+                                    cancelStartTimeout()
                                     startingResult?.error(code, message, null); startingResult = null
                                     event(token, mapOf("type" to "error", "message" to message))
                                     stop(null)
                                 }
                             })
                             camera!!.start(id, size, preview, rotation, matrix)
-                            main.postDelayed({
-                                if (generation == token && startingResult != null) {
+                            val timeout = Runnable {
+                                if (lifecycle.isCurrent(token) && startingResult != null) {
+                                    startTimeout = null
                                     startingResult?.error("COLOR_TIMEOUT", "Camera did not start within 10 seconds", null)
                                     startingResult = null; stop(null)
                                 }
-                            }, 10_000)
+                            }
+                            startTimeout = timeout
+                            main.postDelayed(timeout, 10_000)
                         }
                         else -> result.notImplemented()
                     }
@@ -133,7 +160,7 @@ class ColorBridge(private val activity: Activity, engine: FlutterEngine) {
                     if (frameResult === result) frameResult = null
                     if (startingResult === result) startingResult = null
                     result.error("COLOR_NATIVE", e.message ?: e.javaClass.simpleName, null)
-                    if (call.method == "senderStart" || call.method == "receiverStart") stop(null)
+                    if (ownedStart?.let { lifecycle.isCurrent(it) } == true) stop(null)
                 }
             }
     }
@@ -143,27 +170,41 @@ class ColorBridge(private val activity: Activity, engine: FlutterEngine) {
         dimensions.size == 2 && dimensions[0] == 1024 && dimensions[1] == 1024
     } catch (_: Throwable) { false }
 
-    private fun checkIdle() { check(!disposed && !stopping && camera == null && renderer == null && texture == null) { "Color session busy or disposed" } }
-    private fun event(token: Long, data: Map<String, Any>) { if (generation == token && !disposed) sink?.success(data + mapOf("generation" to token)) }
+    private fun event(token: Long, data: Map<String, Any>) {
+        if (lifecycle.isCurrent(token) && sinkClient?.let { lifecycle.owns(it) } == true)
+            sink?.success(data + mapOf("generation" to token))
+    }
+
+    private fun cancelStartTimeout() {
+        startTimeout?.let { main.removeCallbacks(it) }
+        startTimeout = null
+    }
 
     /** Native cleanup completion precedes Surface/texture release. */
-    fun stop(after: (() -> Unit)?) {
-        if (stopping) { main.postDelayed({ stop(after) }, 20); return }
-        generation++
+    fun stop(after: (() -> Unit)?, clientId: Long? = null) {
+        val completed = after?.let { completion -> Runnable { completion() } }
+        val ticket = if (clientId == null) lifecycle.stop(completed)
+            else lifecycle.stopOwned(clientId, completed)
+        if (ticket == 0L) return
+        cancelStartTimeout()
         startingResult?.error("COLOR_CANCELLED", "Camera session cancelled", null); startingResult = null
         frameResult?.error("COLOR_CANCELLED", "Color display cancelled", null); frameResult = null
         val oldCamera = camera; camera = null
         val oldRenderer = renderer; renderer = null
         val oldSurface = surface; surface = null
         val oldTexture = texture; texture = null
-        stopping = true
         val released = Runnable {
-            oldSurface?.release(); oldTexture?.release()
-            stopping = false; after?.invoke()
+            if (lifecycle.isStopping(ticket)) {
+                try { oldSurface?.release() }
+                finally {
+                    try { oldTexture?.release() }
+                    finally { lifecycle.finishStop(ticket) }
+                }
+            }
         }
         if (oldCamera != null) oldCamera.close(released)
         else if (oldRenderer != null) oldRenderer.close(released)
         else released.run()
     }
-    fun dispose() { disposed = true; stop(null); sink = null }
+    fun dispose() { lifecycle.disallowStarts(); sink = null; sinkClient = null; stop(null) }
 }

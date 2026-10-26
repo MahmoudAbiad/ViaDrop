@@ -6,7 +6,7 @@ import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:open_filex/open_filex.dart';
-import 'package:wakelock_plus/wakelock_plus.dart';
+import '../core/screen_awake.dart';
 
 import '../core/audio_estimate.dart';
 import '../core/manager.dart';
@@ -30,6 +30,7 @@ class AudioTransferPage extends StatefulWidget {
 
 class _AudioTransferPageState extends State<AudioTransferPage> {
   final _manager = TransferManager();
+  final _awake = ScreenAwake.lease();
   final _text = TextEditingController();
   StreamSubscription<dynamic>? _events;
   OneWaySession? _session;
@@ -154,7 +155,7 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
       if (await encrypted.length() > 64 * 1024) {
         throw StateError('الملف المشفّر تجاوز 64KB.');
       }
-      await WakelockPlus.enable();
+      await _awake.acquire();
       wakeLockActive = true;
       token.check();
       // The introduction uses audible ggwave even in the OFDM data mode.
@@ -198,7 +199,7 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
       _show('فشل الإرسال الصوتي: $error');
     } finally {
       if (wakeLockActive) {
-        try { await WakelockPlus.disable(); } catch (_) {}
+        try { await _awake.release(); } catch (_) {}
       }
       if (encrypted != null && await encrypted.exists()) {
         await encrypted.delete();
@@ -233,11 +234,11 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
         onError: (Object error) =>
             unawaited(_failReceive('خطأ في استقبال الصوت: $error')),
       );
-      await WakelockPlus.enable();
+      await _awake.acquire();
       if (!mounted) {
         await _events?.cancel();
         _events = null;
-        await WakelockPlus.disable();
+        await _awake.release();
         return;
       }
       setState(() {
@@ -356,7 +357,7 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
       try { await NativeBridge.stopAudio(); } catch (_) {}
       await _events?.cancel();
       _events = null;
-      try { await WakelockPlus.disable(); } catch (_) {}
+      try { await _awake.release(); } catch (_) {}
     } finally {
       _listenStopping = false;
       if (mounted) setState(() => _receiving = false);
@@ -368,7 +369,7 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
     _sendToken?.cancelled = true;
     _events?.cancel();
     NativeBridge.stopAudio();
-    unawaited(WakelockPlus.disable());
+    unawaited(_awake.dispose());
     _text.dispose();
     _manager.dispose();
     super.dispose();
