@@ -13,3 +13,13 @@ fi
  "$root/android/app/src/main/java/app/viadrop/viadrop/ColorSessionState.java" \
  "$root/test/native/ColorSessionStateTest.java"
 java -cp "$work/classes" app.viadrop.viadrop.ColorSessionStateTest
+
+# When the minimum Android platform is present, reject accidental newer Java
+# library APIs as well as testing the host lifecycle behavior.
+if [ -n "${ANDROID_HOME:-}" ] && [ -f "$ANDROID_HOME/platforms/android-23/android.jar" ]; then
+ "${compiler[@]}" -source 8 -target 8 \
+  -bootclasspath "$ANDROID_HOME/platforms/android-23/android.jar" \
+  -d "$work/api23" \
+  "$root/android/app/src/main/java/app/viadrop/viadrop/ColorSessionState.java"
+ echo 'PASS native application session owner compiles against API23'
+fi

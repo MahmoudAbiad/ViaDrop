@@ -16,10 +16,10 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - name: Simulate color session ownership and cancellation
-        run: bash tools/test_color_lifecycle.sh
       - name: Install minimum supported Android platform
         run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" "platforms;android-23"'
+      - name: Simulate color session ownership and cancellation
+        run: bash tools/test_color_lifecycle.sh
       - name: Compile camera lifecycle and pixel adapters against API23
         run: bash tools/cimbar/android-java-check.sh
   color-codec-roundtrip:

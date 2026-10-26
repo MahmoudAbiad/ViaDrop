@@ -33,6 +33,11 @@ public final class ColorSessionState {
         return ++generation;
     }
 
+    public long owner() {
+        requireOwner();
+        return client;
+    }
+
     public boolean owns(long clientId) {
         requireOwner();
         return phase != Phase.IDLE && client == clientId;

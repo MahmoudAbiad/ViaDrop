@@ -25,7 +25,6 @@ class ColorBridge(private val activity: Activity, engine: FlutterEngine) {
     private val main = Handler(Looper.getMainLooper())
     private val registry = engine.renderer
     private var sink: EventChannel.EventSink? = null
-    private var sinkClient: Long? = null
     private val lifecycle = ColorSessionState { error ->
         android.util.Log.e("ViaDropColor", "Cleanup reply failed", error)
     }
@@ -40,17 +39,14 @@ class ColorBridge(private val activity: Activity, engine: FlutterEngine) {
     init {
         EventChannel(engine.dartExecutor.binaryMessenger, "app.viadrop/color-events")
             .setStreamHandler(object : EventChannel.StreamHandler {
-                override fun onListen(args: Any?, events: EventChannel.EventSink) {
-                    val client = ((args as? Map<*, *>)?.get("clientId") as? Number)?.toLong()
-                    require(client != null && client > 0) { "Missing color event client" }
-                    sinkClient = client; sink = events
-                }
+                override fun onListen(args: Any?, events: EventChannel.EventSink) { sink = events }
                 override fun onCancel(args: Any?) {
-                    // Event-channel cancellation may arrive after another screen
-                    // subscribed. It owns only its original client's resources.
-                    val client = ((args as? Map<*, *>)?.get("clientId") as? Number)?.toLong() ?: sinkClient
-                    if (sinkClient == client) { sink = null; sinkClient = null }
-                    if (client != null) stop(null, client)
+                    sink = null
+                    // Ordinary observation does not own capture resources. Each
+                    // screen explicitly stops its client, even during disposal.
+                    // Null is the embedding's documented hot-restart separator;
+                    // normal Dart cancellations always carry observer arguments.
+                    if (args == null) stop(null)
                 }
             })
         MethodChannel(engine.dartExecutor.binaryMessenger, "app.viadrop/color")
@@ -171,8 +167,8 @@ class ColorBridge(private val activity: Activity, engine: FlutterEngine) {
     } catch (_: Throwable) { false }
 
     private fun event(token: Long, data: Map<String, Any>) {
-        if (lifecycle.isCurrent(token) && sinkClient?.let { lifecycle.owns(it) } == true)
-            sink?.success(data + mapOf("generation" to token))
+        if (lifecycle.isCurrent(token)) sink?.success(data + mapOf(
+            "generation" to token, "clientId" to lifecycle.owner()))
     }
 
     private fun cancelStartTimeout() {
@@ -206,5 +202,5 @@ class ColorBridge(private val activity: Activity, engine: FlutterEngine) {
         else if (oldRenderer != null) oldRenderer.close(released)
         else released.run()
     }
-    fun dispose() { lifecycle.disallowStarts(); sink = null; sinkClient = null; stop(null) }
+    fun dispose() { lifecycle.disallowStarts(); sink = null; stop(null) }
 }
