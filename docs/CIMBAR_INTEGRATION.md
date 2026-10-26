@@ -135,3 +135,39 @@ runtime compatibility or physical transfer result follows from this check.
 
 The same run also passed the complete ARM32 and ARM64 native cross-build jobs,
 including the new API23 camera/display Java compile check at the end of each.
+
+
+## Integrated test APK result — 0.3.0, 2026-10-26 (Asia/Damascus)
+
+Application source revision: 0d3486b95aa9a6b1f0f4e84d9d223b18fa024181.
+Both APK workflows succeeded, with 44 Dart tests and static analysis per profile:
+
+- Modern ARM64, minSdk24: https://github.com/MahmoudAbiad/ViaDrop/actions/runs/40254519430
+- Android6 ARM32, minSdk23: https://github.com/MahmoudAbiad/ViaDrop/actions/runs/40254519498
+- Native/host color evaluation, all four jobs: https://github.com/MahmoudAbiad/ViaDrop/actions/runs/40254519362
+
+Official apksigner verification passed: modern APK v2 signature; Android6 APK
+v1 and v2 signatures. These are internal-test signing identities, not production
+Play signing. This validates the produced package, not installation on a phone.
+
+Downloaded artifact ZIP hashes matched GitHub's reported digests. APK inspection
+confirmed the retained ColorCodec JNI class, the correct per-ABI color library,
+packaged libc++_shared runtime, exact source revision, SDK/NDK notice manifests,
+and 16KB alignment on the color library's ELF LOAD segments for both ABIs.
+The color library's non-system dependency libc++_shared.so is present in each APK.
+The exact source artifact contains pinned libcimbar source/license, the complete
+separate adapter, Camera2/display classes, build tools and original notices.
+
+| APK | Bytes | SHA-256 |
+| --- | ---: | --- |
+| ARM64 / Android7+ | 35467253 | 2d543dfc0f9cb0532e87e8face2147ecdd36bbba139dadbf421993aa2f083bb4 |
+| ARM32 / Android6+ | 27464025 | 202b0e11c6fb83c6ea3e9ed44d6285f4646d7ed9ec13467640512d405726a268 |
+
+The mode is now implemented and packaged, rather than an isolated unconnected
+library. Physical camera-to-camera transfer, installation, lifecycle stress,
+thermal/memory measurements and phone goodput remain **not executed**: no Android
+hardware is attached. In particular A24 sender / J7 receiver is an experimental
+candidate, not a tested compatibility claim. A 1080px sender is required; the
+receiver's screen may be smaller, subject to actual camera configuration.
+Manual BT.601/BT.709 selection remains experimental. Full commercial dependency
+review and production/security acceptance remain separate release gates.

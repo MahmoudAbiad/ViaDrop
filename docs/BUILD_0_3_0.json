@@ -1,0 +1,36 @@
+{
+  "version": "0.3.0+4",
+  "source_revision": "0d3486b95aa9a6b1f0f4e84d9d223b18fa024181",
+  "modern": {
+    "run_id": 40254519430,
+    "artifact_id": 12621868269,
+    "minimum_android_api": 24,
+    "abi": "arm64-v8a",
+    "bytes": 35467253,
+    "sha256": "2d543dfc0f9cb0532e87e8face2147ecdd36bbba139dadbf421993aa2f083bb4",
+    "verified_signature_schemes": [
+      "v2"
+    ]
+  },
+  "legacy": {
+    "run_id": 40254519498,
+    "artifact_id": 12622400880,
+    "minimum_android_api": 23,
+    "abi": "armeabi-v7a",
+    "bytes": 27464025,
+    "sha256": "202b0e11c6fb83c6ea3e9ed44d6285f4646d7ed9ec13467640512d405726a268",
+    "verified_signature_schemes": [
+      "v1",
+      "v2"
+    ]
+  },
+  "color_source_artifact": {
+    "run_id": 40254519430,
+    "artifact_id": 12622077534
+  },
+  "color_evaluation_run_id": 40254519362,
+  "dart_tests_per_apk_profile": 44,
+  "physical_device_tests_executed": false,
+  "installation_test_executed": false,
+  "production_ready": false
+}

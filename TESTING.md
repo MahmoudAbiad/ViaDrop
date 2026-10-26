@@ -164,3 +164,10 @@ link between physical devices.
 No physical Android installation, camera/speaker loopback or two-phone transfer
 was executed. CPU, thermal, battery and sustained goodput are unmeasured. Follow
 [the device procedure](docs/COLOR_DEVICE_TEST.md) before claiming device support.
+
+
+Final 0d3486b integration result: both APK runs 40254519430 / 40254519498 passed
+all tests, analysis, release build, minSdk/ABI/native/notice checks and official
+APK signature verification. APK artifact checksums and post-download inspection
+are recorded in docs/CIMBAR_INTEGRATION.md. This does not change the unexecuted
+physical-device test statuses above.
