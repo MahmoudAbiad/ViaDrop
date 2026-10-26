@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -24,6 +25,18 @@ void main() {
             await rootBundle.loadString('assets/licenses/$file'));
       }
     }
+  });
+  LicenseRegistry.addLicense(() async* {
+    // Generated only by the pinned color packaging step. Source-only/test
+    // checkouts can omit it; a shipped color APK is checked for its manifest.
+    try {
+      final files = jsonDecode(await rootBundle.loadString('assets/licenses/color/INDEX.json')) as List;
+      for (final file in files.whereType<String>()) {
+        if (file.endsWith('.json')) continue;
+        yield LicenseEntryWithLineBreaks(['ViaDrop color / CIMBAR / OpenCV'],
+          await rootBundle.loadString(file));
+      }
+    } on FlutterError { /* Color distribution assets absent in source tests. */ }
   });
   runApp(const ViaDropApp());
 }

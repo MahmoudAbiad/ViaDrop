@@ -17,3 +17,12 @@ android/key.properties
 *.aab
 *.partial
 *.vdp
+
+# Generated pinned color inputs / distribution staging
+.color-deps/
+dist/
+android/app/src/main/java/app/viadrop/color/
+android/app/src/main/assets/viadrop-color-notices/
+assets/licenses/color/
+
+tools/cimbar/__pycache__/

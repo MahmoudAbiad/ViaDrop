@@ -10,6 +10,7 @@ class PhysicalProfile {
     required this.title,
     required this.description,
     this.implemented = true,
+    this.color = false,
     this.qrFps = 0,
     this.qrBlockBytes = 0,
     this.qrVersion = 13,
@@ -22,7 +23,7 @@ class PhysicalProfile {
 
   final String id, title, description;
   final PhysicalMedium medium;
-  final bool implemented, audioFast, audioHigh;
+  final bool implemented, color, audioFast, audioHigh;
   final int qrFps, qrBlockBytes, qrVersion, qrTiles, audioBlockBytes, audioFrameGapMs;
 }
 
@@ -32,6 +33,12 @@ const physicalProfiles = <PhysicalProfile>[
     title: 'Ultra Optical • مختبري',
     description: 'QR إصدار 40: حمولة 2400 بايت وإرسال 30 رمزاً/ثانية. يتطلب شاشة عالية الدقة، كاميرا سريعة، واختبار استقبال فعلي.',
     qrFps: 30, qrBlockBytes: 2400, qrVersion: 40,
+  ),
+  PhysicalProfile(
+    id: 'qr-color', medium: PhysicalMedium.qr, color: true,
+    title: 'CIMBAR Color • تجريبي',
+    description: 'بيانات فعلية بالألوان، 2400 بايت/إطار حتى 10 تحديثات/ثانية حسب الترميز. يتطلب شاشة 1080px وكاميرا مناسبة؛ سرعة الاستقبال غير مختبرة.',
+    qrFps: 10, qrBlockBytes: 2400,
   ),
   PhysicalProfile(
     id: 'qr-grid', medium: PhysicalMedium.qr,
@@ -104,6 +111,7 @@ class PhysicalCapabilities {
     required this.audioInput48k,
     required this.audioOutput48k,
     required this.ofdmNative,
+    this.colorNative = false,
     this.androidSdk = 0,
     this.processorCores = 0,
     this.displayWidthPx = 0,
@@ -112,7 +120,7 @@ class PhysicalCapabilities {
   });
 
   const PhysicalCapabilities.unavailable()
-      : probeOk = false, camera = false, cameraMaxFps = 0,
+      : probeOk = false, camera = false, cameraMaxFps = 0, colorNative = false,
         displayHz = 0, microphone = false, audioInput48k = false,
         audioOutput48k = false, ofdmNative = false,
         ultrasoundInput = false, ultrasoundOutput = false,
@@ -120,7 +128,7 @@ class PhysicalCapabilities {
 
   final bool probeOk, camera, microphone, audioInput48k, audioOutput48k;
   final int androidSdk, processorCores, displayWidthPx;
-  final bool ofdmNative, ultrasoundInput, ultrasoundOutput;
+  final bool ofdmNative, colorNative, ultrasoundInput, ultrasoundOutput;
   final int cameraMaxFps;
   final double displayHz;
 
@@ -134,6 +142,7 @@ class PhysicalCapabilities {
         audioInput48k: m['audioInput48k'] == true,
         audioOutput48k: m['audioOutput48k'] == true,
         ofdmNative: m['ofdmNative'] == true,
+        colorNative: m['colorNative'] == true,
         androidSdk: (m['androidSdk'] as num?)?.toInt() ?? 0,
         processorCores: (m['processorCores'] as num?)?.toInt() ?? 0,
         displayWidthPx: (m['displayWidthPx'] as num?)?.toInt() ?? 0,
@@ -151,6 +160,11 @@ class PhysicalCapabilities {
     if (p.medium == PhysicalMedium.qr) {
       if (!camera) {
         return const ProfileAvailability(false, 'لا توجد كاميرا متاحة');
+      }
+      if (p.color && (!colorNative || displayWidthPx < 1080 ||
+          androidSdk < 26 || cameraMaxFps < 30 || processorCores < 4)) {
+        return const ProfileAvailability(false,
+          'الألوان: تحتاج المحرك الأصلي وAndroid 8+ وشاشة 1080px وكاميرا 30fps وأربع أنوية؛ حجم التقاط الكاميرا يُفحص عند البدء');
       }
       if ((p.id == 'qr-ultra' || p.id == 'qr-grid') &&
           (cameraMaxFps < 30 || displayHz < 59 ||

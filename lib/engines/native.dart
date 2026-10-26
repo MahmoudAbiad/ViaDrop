@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../core/transfer.dart';
+import 'color_optical.dart';
 class NativeBridge {
  static const methods=MethodChannel('app.viadrop/native');
  static final events=const EventChannel('app.viadrop/events').receiveBroadcastStream().asBroadcastStream();
@@ -12,7 +13,9 @@ class NativeBridge {
  static Future<void> stopAudio()async=>methods.invokeMethod('audioStop');
  static Future<Map<dynamic,dynamic>> probePhysicalCapabilities() async {
   final value = await methods.invokeMethod<dynamic>('physicalCapabilities');
-  return value is Map ? Map<dynamic,dynamic>.from(value) : <dynamic,dynamic>{};
+  final map = value is Map ? Map<dynamic,dynamic>.from(value) : <dynamic,dynamic>{};
+  map['colorNative'] = await ColorOptical.available();
+  return map;
  }
 }
 class BluetoothEngine extends TransferEngine {

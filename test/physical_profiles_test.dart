@@ -44,6 +44,24 @@ void main() {
     expect(physicalProfileById('audio-ofdm')!.audioFrameGapMs, 180);
   });
 
+  test('color mode requires native codec and adequate display, not only a camera', () {
+    final color = physicalProfileById('qr-color')!;
+    expect(color.color, isTrue);
+    expect(modern.availability(color).enabled, isFalse);
+    final enabled = PhysicalCapabilities.fromMap({
+      'probeOk': true, 'camera': true, 'colorNative': true,
+      'cameraMaxFps': 30, 'displayHz': 60, 'displayWidthPx': 1080,
+      'androidSdk': 33, 'processorCores': 8,
+    });
+    expect(enabled.availability(color).enabled, isTrue);
+    final tooSmall = PhysicalCapabilities.fromMap({
+      'probeOk': true, 'camera': true, 'colorNative': true,
+      'cameraMaxFps': 30, 'displayHz': 60, 'displayWidthPx': 720,
+      'androidSdk': 23, 'processorCores': 8,
+    });
+    expect(tooSmall.availability(color).enabled, isFalse);
+  });
+
   test('unknown or failed probes never enable a transfer mode', () {
     const failed = PhysicalCapabilities.unavailable();
     for (final profile in physicalProfiles) {

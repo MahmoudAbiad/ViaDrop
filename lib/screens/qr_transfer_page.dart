@@ -7,12 +7,14 @@ import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../core/manager.dart';
 import '../core/one_way_session.dart';
 import '../core/physical_profiles.dart';
 import '../engines/native.dart';
+import '../engines/color_optical.dart';
 import '../widgets/physical_profile_selector.dart';
 import '../core/transfer.dart';
 import '../engines/physical.dart';
@@ -27,7 +29,7 @@ class QrTransferPage extends StatefulWidget {
   State<QrTransferPage> createState() => _QrTransferPageState();
 }
 
-class _QrTransferPageState extends State<QrTransferPage> {
+class _QrTransferPageState extends State<QrTransferPage> with WidgetsBindingObserver {
   final _manager = TransferManager();
 
   // QR-only scanner configuration. The default mobile_scanner throttle is
@@ -42,6 +44,12 @@ class _QrTransferPageState extends State<QrTransferPage> {
     detectionSpeed: DetectionSpeed.unrestricted,
     returnImage: false,
   );
+  StreamSubscription<dynamic>? _colorEvents;
+  Future<void>? _colorStopping;
+  int? _colorTexture, _colorGeneration;
+  int _colorWidth = 1024, _colorHeight = 1024, _colorRotation = 0;
+  String _colorMatrix = 'bt601';
+  bool get _isColor => _profile?.color ?? false;
   OneWaySession? _session;
   PhysicalDecoder _decoder = PhysicalDecoder(600 * 1024);
   File? _selected;
@@ -71,6 +79,13 @@ class _QrTransferPageState extends State<QrTransferPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _colorEvents = ColorOptical.events.listen(_onColorEvent, onError: (Object error) {
+      if (mounted && _isColor && _active) {
+        _stop();
+        setState(() => _message = 'تعذر استقبال أحداث الألوان: $error');
+      }
+    });
     unawaited(_probeCapabilities());
     _manager.initialize().then((_) {
       if (mounted) setState(() => _ready = true);
@@ -109,6 +124,9 @@ class _QrTransferPageState extends State<QrTransferPage> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    unawaited(_colorEvents?.cancel());
+    unawaited(_stopColor());
     _sendToken?.cancelled = true;
     unawaited(WakelockPlus.disable());
     _manager.dispose();
@@ -137,6 +155,7 @@ class _QrTransferPageState extends State<QrTransferPage> {
     if (!_ready || _active || _selected == null || !_profileSupported) return;
     setState(() => _busy = true);
     try {
+      await _stopColor();
       await WakelockPlus.enable();
       if (!mounted) {
         await WakelockPlus.disable();
@@ -160,6 +179,7 @@ class _QrTransferPageState extends State<QrTransferPage> {
     if (!_ready || _active || !_profileSupported) return;
     setState(() => _busy = true);
     try {
+      await _stopColor();
       await WakelockPlus.enable();
       if (!mounted) {
         await WakelockPlus.disable();
@@ -201,6 +221,16 @@ class _QrTransferPageState extends State<QrTransferPage> {
       if (await encrypted.length() > 512 * 1024) {
         throw const FormatException('الملف أكبر من 512KB بعد التشفير.');
       }
+      if (physicalProfileById(session.profileId)!.color) {
+        final display = await ColorOptical.startSender();
+        token.check();
+        if (!mounted) throw TransferCancelled();
+        setState(() {
+          _colorTexture = display['textureId'] as int;
+          _colorGeneration = display['generation'] as int;
+        });
+        await WidgetsBinding.instance.endOfFrame;
+      }
       for (var left = 3; left > 0; left--) {
         token.check();
         if (mounted) setState(() => _countdown = left);
@@ -209,7 +239,7 @@ class _QrTransferPageState extends State<QrTransferPage> {
       token.check();
       if (mounted) setState(() {
         _countdown = 0;
-        _message = 'بث QR جارٍ؛ أوقفه بعد اكتمال استقبال الملف.';
+        _message = 'البث البصري جارٍ؛ أوقفه بعد اكتمال استقبال الملف.';
       });
       _manager.update(Phase.transferring);
       final engine = PhysicalEngine(
@@ -224,7 +254,11 @@ class _QrTransferPageState extends State<QrTransferPage> {
           }
         },
         emit: (Uint8List packet) async {
-          if (!token.cancelled && mounted) {
+          token.check();
+          if (physicalProfileById(session.profileId)!.color) {
+            await ColorOptical.present(packet);
+            token.check();
+          } else if (mounted) {
             setState(() => _frame = encodeQrFrame(packet));
           }
         },
@@ -237,6 +271,8 @@ class _QrTransferPageState extends State<QrTransferPage> {
     } catch (error) {
       if (mounted) setState(() => _message = 'فشل النقل البصري: $error');
     } finally {
+      await _stopColor();
+      if (mounted) setState(() { _colorTexture = null; _colorGeneration = null; });
       if (encrypted != null && await encrypted.exists()) {
         await encrypted.delete();
       }
@@ -279,9 +315,15 @@ class _QrTransferPageState extends State<QrTransferPage> {
             _progress = 0;
             _message = 'وصلت رسالة البدء. انتظر الرموز المتحركة على نفس الشاشة.';
           });
+          if (physicalProfileById(session.profileId)?.color ?? false) {
+            await _standardScanner.stop();
+            await _streamScanner.stop();
+            await WidgetsBinding.instance.endOfFrame;
+            await _startColorReceiver(session);
+          }
           return;
         }
-      } else if (_scanData) {
+      } else if (_scanData && !_isColor) {
         final result = decodeQrCapture(_decoder, values);
         if (result == null) {
           final progress = _decoder.progress;
@@ -338,11 +380,14 @@ class _QrTransferPageState extends State<QrTransferPage> {
 
   void _stop() {
     _sendToken?.cancelled = true;
+    unawaited(_stopColor());
     if (_sending) {
       setState(() => _message = 'جارٍ إيقاف بث الرموز...');
       return;
     }
     setState(() {
+      _colorTexture = null;
+      _colorGeneration = null;
       _showInvite = false;
       _scanInvite = false;
       _scanData = false;
@@ -379,6 +424,88 @@ class _QrTransferPageState extends State<QrTransferPage> {
     );
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if ((state == AppLifecycleState.paused || state == AppLifecycleState.detached) &&
+        mounted && _isColor && _active) _stop();
+  }
+
+  Future<void> _stopColor() => _colorStopping ??= ColorOptical.stop()
+      .catchError((Object _) {})
+      .whenComplete(() => _colorStopping = null);
+
+  Future<void> _startColorReceiver(OneWaySession session) async {
+    try {
+      if (!await Permission.camera.request().isGranted) {
+        throw StateError('لم تُمنح صلاحية الكاميرا');
+      }
+      if (!mounted || !_scanData || _session != session) return;
+      final camera = await ColorOptical.startReceiver(_colorMatrix);
+      if (!mounted || !_scanData || _session != session) {
+        await _stopColor(); return;
+      }
+      setState(() {
+        _colorTexture = camera['textureId'] as int;
+        _colorGeneration = camera['generation'] as int;
+        _colorWidth = camera['width'] as int;
+        _colorHeight = camera['height'] as int;
+        _colorRotation = camera['rotation'] as int;
+        _message = 'وجّه الكاميرا إلى كامل إطار الألوان. أبقِ الهاتف ثابتاً؛ التقدم يحسب من البيانات المفكوكة فعلياً.';
+      });
+    } catch (error) {
+      await _stopColor();
+      if (mounted) setState(() {
+        _scanData = false; _colorTexture = null; _colorGeneration = null;
+        _message = 'تعذر بدء كاميرا الألوان: $error';
+      });
+      unawaited(WakelockPlus.disable());
+    }
+  }
+
+  void _onColorEvent(dynamic event) {
+    if (!mounted || !_scanData || !_isColor || _finalizing || event is! Map ||
+        event['generation'] != _colorGeneration) return;
+    if (event['type'] == 'error') {
+      _stop();
+      setState(() => _message = 'خطأ نقل الألوان: ${event['message']}');
+      return;
+    }
+    final packet = event['data'];
+    if (event['type'] != 'packet' || packet is! Uint8List) return;
+    try {
+      final result = _decoder.add(packet);
+      if (result == null) {
+        final progress = _decoder.progress;
+        if ((progress - _progress).abs() >= 0.01) setState(() => _progress = progress);
+        return;
+      }
+      _finalizing = true;
+      setState(() {
+        _scanData = false; _colorTexture = null; _colorGeneration = null;
+        _progress = 1; _message = 'اكتملت بيانات الألوان. جارٍ التحقق من الملف...';
+      });
+      unawaited(_completeColorReceive(result));
+    } catch (error) {
+      setState(() => _message = 'تعذر إعادة بناء الإطار: $error. ما زلنا نستقبل.');
+    }
+  }
+
+  Future<void> _completeColorReceive(Uint8List result) async {
+    await _stopColor();
+    if (mounted) await _finishReceive(result);
+  }
+
+  Widget _colorPreview() {
+    if (_colorTexture == null) return const SizedBox(height: 320,
+      child: Center(child: CircularProgressIndicator()));
+    final odd = _colorRotation % 180 != 0;
+    return AspectRatio(
+      aspectRatio: odd ? _colorHeight / _colorWidth : _colorWidth / _colorHeight,
+      child: RotatedBox(quarterTurns: _colorRotation ~/ 90,
+        child: Texture(textureId: _colorTexture!, filterQuality: FilterQuality.none)),
+    );
+  }
+
   Widget _scanner() {
     final isStreaming = (_profile?.qrFps ?? 0) >= 9;
     return SizedBox(
@@ -394,7 +521,23 @@ class _QrTransferPageState extends State<QrTransferPage> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
+  Widget build(BuildContext context) {
+    if (_sending && _isColor && _colorTexture != null) {
+      return Scaffold(backgroundColor: Colors.white,
+        body: SafeArea(child: Column(children: [
+          if (_countdown > 0) Text('$_countdown',
+            style: const TextStyle(fontSize: 52, color: Colors.black)),
+          Expanded(child: Center(child: AspectRatio(aspectRatio: 1,
+            child: Texture(textureId: _colorTexture!, filterQuality: FilterQuality.none)))),
+          Padding(padding: const EdgeInsets.all(12), child: Column(children: [
+            Text(_message, style: const TextStyle(color: Colors.black)),
+            OutlinedButton.icon(onPressed: _stop, icon: const Icon(Icons.stop),
+              label: const Text('إيقاف بث الألوان')),
+          ])),
+        ])),
+      );
+    }
+    return Scaffold(
     appBar: AppBar(title: const Text('ViaDrop • الكاميرا')),
     body: SafeArea(child: ListView(
       padding: const EdgeInsets.all(16),
@@ -422,6 +565,19 @@ class _QrTransferPageState extends State<QrTransferPage> {
           }),
         ),
         const SizedBox(height: 12),
+        if (_isColor && !_sendMode) ...[
+          DropdownButtonFormField<String>(
+            value: _colorMatrix,
+            decoration: const InputDecoration(labelText: 'معايرة لون الكاميرا • اختيار صريح'),
+            items: const [
+              DropdownMenuItem(value: 'bt601', child: Text('BT.601 limited • جرّبه أولاً')),
+              DropdownMenuItem(value: 'bt709', child: Text('BT.709 limited • معايرة بديلة')),
+            ],
+            onChanged: _active ? null : (value) => setState(() => _colorMatrix = value!),
+          ),
+          const Text('اختيار تجريبي يدوي؛ لا يثبت فضاء لون الكاميرا. إن لم يتحرك التقدم، أوقف الجلسة وجرّب المعايرة الأخرى.'),
+          const SizedBox(height: 12),
+        ],
         if (_sendMode) ...[
           OutlinedButton.icon(
             onPressed: _active ? null : _pick,
@@ -472,7 +628,7 @@ class _QrTransferPageState extends State<QrTransferPage> {
           ],
           if (_scanData) ...[
             const Text('تم مسح البداية. وجّه الكاميرا إلى رموز البيانات.'),
-            _scanner(),
+            if (_isColor) _colorPreview() else _scanner(),
             LinearProgressIndicator(value: _progress),
           ],
           if (_finalizing) const LinearProgressIndicator(),
@@ -506,4 +662,5 @@ class _QrTransferPageState extends State<QrTransferPage> {
       ],
     )),
   );
+  }
 }

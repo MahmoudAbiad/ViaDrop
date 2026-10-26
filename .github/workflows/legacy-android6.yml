@@ -3,6 +3,8 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+env:
+  VIADROP_COLOR_DEPS: ${{ github.workspace }}/.color-deps
 jobs:
   android6-arm32-release:
     runs-on: ubuntu-latest
@@ -62,6 +64,12 @@ jobs:
               '    <application android:usesCleartextTraffic="true"', 1)
           manifest.write_text(text)
           PY
+      - name: Prepare pinned color codec, production Java and license bundle
+        run: |
+          bash tools/cimbar/prepare-app.sh
+          python3 tools/cimbar/configure-gradle.py
+      - name: Install pinned color NDK
+        run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" "ndk;28.2.13676358"'
       - name: Resolve legacy Flutter dependencies
         run: flutter pub get
       - name: Remove generated starter widget test
@@ -85,6 +93,8 @@ jobs:
           grep -Fx "sdkVersion:'23'" /tmp/viadrop-legacy-badging.txt
           unzip -Z1 "$APK" | grep -Fx 'lib/armeabi-v7a/libflutter.so'
           unzip -Z1 "$APK" | grep -Fx 'lib/armeabi-v7a/libviadrop_audio.so'
+          unzip -Z1 "$APK" | grep -Fx 'lib/armeabi-v7a/libviadrop_color_jni.so'
+          unzip -Z1 "$APK" | grep -Fx 'assets/viadrop-color-notices/SOURCE_MANIFEST.json'
           if unzip -Z1 "$APK" | grep -Eq '^lib/(arm64-v8a|x86|x86_64)/'; then
             echo 'Unexpected architecture in Android 6 ARM32 APK' >&2
             exit 1
@@ -101,4 +111,10 @@ jobs:
         with:
           name: ViaDrop-V1-Android6-J7-ARM32-release
           path: dist/ViaDrop-V1-Android6-J7-ARM32-release.apk
+          if-no-files-found: error
+      - name: Upload exact color covered source and notices
+        uses: actions/upload-artifact@v4
+        with:
+          name: ViaDrop-color-covered-source
+          path: dist/ViaDrop-color-covered-source.tar.gz
           if-no-files-found: error

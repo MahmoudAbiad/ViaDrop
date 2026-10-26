@@ -10,3 +10,8 @@ target_link_options(viadrop_audio PRIVATE "-Wl,-z,max-page-size=16384")
 
 target_compile_definitions(viadrop_audio PRIVATE kiss_fft_scalar=double)
 set_property(TARGET viadrop_audio PROPERTY C_STANDARD 11)
+
+# Separately licensed component; dependency pins are prepared before Gradle.
+if(DEFINED CIMBAR_SOURCE)
+  add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../../../../components/color_codec" "viadrop-color")
+endif()

@@ -17,3 +17,23 @@ license and attribution are in assets/licenses/KISS-FFT-BSD.txt.
 Source checksums and exact copied files: docs/CYRINX_SOURCE.json.
 No Swift/Kotlin application, Python reference modem or external crypto is copied.
 ViaDrop's JNI/streaming wrapper is original application code.
+
+
+## Experimental color transport (0.3.0)
+
+The separate ViaDrop color codec component and pinned libcimbar
+156fbb9c675ca9641f6559922b7025a0f2ee8125 are MPL-2.0 covered source.
+The exact source and original notices are distributed alongside the test APK
+as the ViaDrop-color-covered-source Actions artifact. Source and build tools:
+https://github.com/MahmoudAbiad/ViaDrop/tree/main/components/color_codec and
+https://github.com/MahmoudAbiad/ViaDrop/tree/main/tools/cimbar . This does not
+relicense the independently written proprietary ViaDrop application.
+
+The build downloads the official OpenCV 4.10.0 Android SDK at a recorded SHA-256.
+OpenCV is Apache-2.0; its selected static components have their own dependencies.
+All SDK-delivered license directories and LICENSE/COPYING/NOTICE files are
+preserved in the APK's viadrop-color-notices assets and Flutter license page.
+The build-generated SOURCE_MANIFEST.json inventories those exact notice hashes.
+Pinned libcimbar dependency licenses are preserved from the checked source
+manifest; zstd uses its BSD option, not its alternative GPL option. See
+LICENSE_AUDIT.md for remaining commercial release review.

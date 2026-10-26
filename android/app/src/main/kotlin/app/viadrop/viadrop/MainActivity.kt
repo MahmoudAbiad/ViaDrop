@@ -19,6 +19,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.TimeUnit
 class MainActivity:FlutterActivity(){
+ private var colorBridge:ColorBridge?=null
  companion object{init{System.loadLibrary("viadrop_audio")}}
  private external fun waveInit():Long
  private external fun waveFree(h:Long)
@@ -47,6 +48,7 @@ class MainActivity:FlutterActivity(){
  }
  override fun configureFlutterEngine(engine:FlutterEngine){
   super.configureFlutterEngine(engine)
+  colorBridge=ColorBridge(this,engine)
   EventChannel(engine.dartExecutor.binaryMessenger,"app.viadrop/events").setStreamHandler(object:EventChannel.StreamHandler{
    override fun onListen(arguments:Any?,events:EventChannel.EventSink){sink=events}
    override fun onCancel(arguments:Any?){sink=null}
@@ -249,5 +251,6 @@ class MainActivity:FlutterActivity(){
   };return result
  }
  override fun onNewIntent(intent:Intent){super.onNewIntent(intent);setIntent(intent);emit(mapOf("type" to "shared"))}
- override fun onDestroy(){stopAudio();stopBluetooth();workers.shutdownNow();super.onDestroy()}
+ override fun onPause(){colorBridge?.stop(null);super.onPause()}
+ override fun onDestroy(){colorBridge?.dispose();stopAudio();stopBluetooth();workers.shutdownNow();super.onDestroy()}
 }
