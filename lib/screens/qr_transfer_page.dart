@@ -109,8 +109,8 @@ class _QrTransferPageState extends State<QrTransferPage> with WidgetsBindingObse
       _capabilities = result;
       final current = _profileId == null
           ? null : physicalProfileById(_profileId!);
-      if (current == null || !result.availability(current).enabled) {
-        _profileId = result.recommended(PhysicalMedium.qr)?.id;
+      if (current == null || !result.availability(current, sending: _sendMode).enabled) {
+        _profileId = result.recommended(PhysicalMedium.qr, sending: _sendMode)?.id;
       }
       _probing = false;
     });
@@ -120,7 +120,7 @@ class _QrTransferPageState extends State<QrTransferPage> with WidgetsBindingObse
       _profileId == null ? null : physicalProfileById(_profileId!);
 
   bool get _profileSupported =>
-      _profile != null && _capabilities.availability(_profile!).enabled;
+      _profile != null && _capabilities.availability(_profile!, sending: _sendMode).enabled;
 
   @override
   void dispose() {
@@ -557,6 +557,7 @@ class _QrTransferPageState extends State<QrTransferPage> with WidgetsBindingObse
         const SizedBox(height: 12),
         PhysicalProfileSelector(
           medium: PhysicalMedium.qr,
+          sending: _sendMode,
           capabilities: _capabilities,
           selectedId: _profileId,
           enabled: !_sending && !_busy && !_showInvite && !_scanData && !_finalizing,

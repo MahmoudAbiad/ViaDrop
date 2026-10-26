@@ -5,6 +5,7 @@ No license is changed; the application's source is excluded from source bundle.
 """
 import hashlib
 import json
+import os
 import shutil
 import sys
 import tarfile
@@ -49,6 +50,8 @@ for name in manifest['license_files']:
 shutil.copy2(root/'components/color_codec/LICENSE', notices/'ViaDrop-color-MPL-2.0.txt')
 record = {
     'libcimbar_revision': manifest.get('revision', '156fbb9c675ca9641f6559922b7025a0f2ee8125'),
+    'viadrop_revision': os.environ.get('GITHUB_SHA', 'local-build'),
+    'covered_source_path': 'components/color_codec',
     'opencv_version': '4.10.0',
     'opencv_sdk_sha256': '464d55abe64b53af3aeb73197cf4620535abd909916d06e6a8b7c32712013966',
     'opencv_notices': {str(p.relative_to(sdk)): hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(notice_files)},

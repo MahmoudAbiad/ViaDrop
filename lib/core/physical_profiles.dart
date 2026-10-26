@@ -37,7 +37,7 @@ const physicalProfiles = <PhysicalProfile>[
   PhysicalProfile(
     id: 'qr-color', medium: PhysicalMedium.qr, color: true,
     title: 'CIMBAR Color • تجريبي',
-    description: 'بيانات فعلية بالألوان، 2400 بايت/إطار حتى 10 تحديثات/ثانية حسب الترميز. يتطلب شاشة 1080px وكاميرا مناسبة؛ سرعة الاستقبال غير مختبرة.',
+    description: 'بيانات فعلية بالألوان، 2400 بايت/إطار حتى 10 تحديثات/ثانية حسب الترميز. يتطلب شاشة إرسال 1080px؛ المستقبل يحتاج كاميرا مناسبة، وليس شاشة عالية الدقة؛ سرعة الاستقبال غير مختبرة.',
     qrFps: 10, qrBlockBytes: 2400,
   ),
   PhysicalProfile(
@@ -150,7 +150,7 @@ class PhysicalCapabilities {
         ultrasoundOutput: m['ultrasoundOutput'] == true,
       );
 
-  ProfileAvailability availability(PhysicalProfile p) {
+  ProfileAvailability availability(PhysicalProfile p, {bool sending = true}) {
     if (!p.implemented) {
       return const ProfileAvailability(false, 'غير منفّذ في هذا الإصدار');
     }
@@ -161,10 +161,15 @@ class PhysicalCapabilities {
       if (!camera) {
         return const ProfileAvailability(false, 'لا توجد كاميرا متاحة');
       }
-      if (p.color && (!colorNative || displayWidthPx < 1080 ||
-          androidSdk < 26 || cameraMaxFps < 30 || processorCores < 4)) {
-        return const ProfileAvailability(false,
-          'الألوان: تحتاج المحرك الأصلي وAndroid 8+ وشاشة 1080px وكاميرا 30fps وأربع أنوية؛ حجم التقاط الكاميرا يُفحص عند البدء');
+      if (p.color) {
+        if (!colorNative || androidSdk < 23 || processorCores < 4 || cameraMaxFps < 15) {
+          return const ProfileAvailability(false,
+            'الألوان: تحتاج المحرك الأصلي وAndroid 6+ وكاميرا 15fps وأربع أنوية؛ حجم التقاط الكاميرا يُفحص عند البدء');
+        }
+        if (sending && displayWidthPx < 1080) {
+          return const ProfileAvailability(false,
+            'إرسال الألوان يحتاج شاشة 1080px؛ جرّب هذا الهاتف كمستقبل إذا اجتاز فحص الكاميرا');
+        }
       }
       if ((p.id == 'qr-ultra' || p.id == 'qr-grid') &&
           (cameraMaxFps < 30 || displayHz < 59 ||
@@ -216,9 +221,9 @@ class PhysicalCapabilities {
 
   /// The "best for my phone" default is the fastest *eligible* implemented
   /// mode. Two phones might pick different modes; never assume mutual support.
-  PhysicalProfile? recommended(PhysicalMedium medium) {
+  PhysicalProfile? recommended(PhysicalMedium medium, {bool sending = true}) {
     for (final p in physicalProfiles) {
-      if (p.medium == medium && availability(p).enabled) return p;
+      if (p.medium == medium && availability(p, sending: sending).enabled) return p;
     }
     return null;
   }

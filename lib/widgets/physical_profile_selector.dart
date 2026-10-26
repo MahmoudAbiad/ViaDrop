@@ -15,12 +15,14 @@ class PhysicalProfileSelector extends StatelessWidget {
     required this.onChanged,
     required this.onRefresh,
     required this.checking,
+    this.sending = true,
   });
 
   final PhysicalMedium medium;
   final PhysicalCapabilities capabilities;
   final String? selectedId;
   final bool enabled;
+  final bool sending;
   final bool checking;
   final ValueChanged<String> onChanged;
   final VoidCallback onRefresh;
@@ -29,7 +31,7 @@ class PhysicalProfileSelector extends StatelessWidget {
   Widget build(BuildContext context) {
     final candidates = physicalProfiles.where((p) => p.medium == medium).toList();
     final selected = selectedId == null ? null : physicalProfileById(selectedId!);
-    final current = selected == null ? null : capabilities.availability(selected);
+    final current = selected == null ? null : capabilities.availability(selected, sending: sending);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -37,7 +39,7 @@ class PhysicalProfileSelector extends StatelessWidget {
           key: ValueKey('${medium.name}-$selectedId'),
           // ignore: deprecated_member_use
           value: candidates.any((p) => p.id == selectedId &&
-              capabilities.availability(p).enabled) ? selectedId : null,
+              capabilities.availability(p, sending: sending).enabled) ? selectedId : null,
           decoration: const InputDecoration(
             labelText: 'تقنية النقل',
             border: OutlineInputBorder(),
@@ -48,16 +50,16 @@ class PhysicalProfileSelector extends StatelessWidget {
             for (final p in candidates)
               DropdownMenuItem<String>(
                 value: p.id,
-                enabled: capabilities.availability(p).enabled,
+                enabled: capabilities.availability(p, sending: sending).enabled,
                 child: Text(
-                  '${p.title}  —  ${capabilities.availability(p).enabled ? 'متاح تجريبياً' : 'معطّل'}',
+                  '${p.title}  —  ${capabilities.availability(p, sending: sending).enabled ? 'متاح تجريبياً' : 'معطّل'}',
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
           ],
           onChanged: !enabled ? null : (v) {
             if (v != null && capabilities.availability(
-                physicalProfileById(v)!).enabled) {
+                physicalProfileById(v)!, sending: sending).enabled) {
               onChanged(v);
             }
           },

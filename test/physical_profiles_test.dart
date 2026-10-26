@@ -60,6 +60,9 @@ void main() {
       'androidSdk': 23, 'processorCores': 8,
     });
     expect(tooSmall.availability(color).enabled, isFalse);
+    // A small screen prevents sending, not camera reception. J7 remains an
+    // experimental candidate; actual camera stream configuration is separate.
+    expect(tooSmall.availability(color, sending: false).enabled, isTrue);
   });
 
   test('unknown or failed probes never enable a transfer mode', () {
