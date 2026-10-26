@@ -181,3 +181,12 @@ including 10,000 lifecycle cycles and 20,000 exactly-once cleanup replies.
 It does not open a camera, microphone or Android Surface. Automated APK build
 and Dart suite results for the final code revision are recorded separately.
 No physical-device acceptance status changes as a result of these simulations.
+
+
+Final 0.3.1 result at 7fa9833: modern run 40270106347 and Android6 run
+40270106323 both passed 56 Flutter tests, analysis, native lifecycle simulations,
+release APK build and official signature verification. The host simulation
+completed 10,000 lifecycle cycles / 20,000 exactly-once stop replies. Native
+API23 compilation also passed in evaluation run 40269565499 at ceb62d6; native
+ownership source is unchanged in the final app revision. These automated
+results do not change the unexecuted physical-device statuses above.

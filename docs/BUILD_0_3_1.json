@@ -1,0 +1,38 @@
+{
+  "version": "0.3.1+5",
+  "source_revision": "7fa98332e5ff55e8597e1ef800cecb5238c851e1",
+  "modern": {
+    "run_id": 40270106347,
+    "job_id": 121400865987,
+    "artifact_id": 12627936365,
+    "artifact_zip_digest": "sha256:e447db16473a98949dba92d78967afe65314fe298b145dee594fd908780ff873",
+    "apk_bytes": 35467253,
+    "min_android_api": 24,
+    "signature_schemes": [
+      "v2"
+    ]
+  },
+  "legacy": {
+    "run_id": 40270106323,
+    "job_id": 121400865928,
+    "artifact_id": 12628311721,
+    "artifact_zip_digest": "sha256:8de0e9b4c24b95508e56f7ff2c938e2e79c4d3cf2ceff45cbc83453f87d6d5d2",
+    "apk_bytes": 27464008,
+    "min_android_api": 23,
+    "signature_schemes": [
+      "v1",
+      "v2"
+    ]
+  },
+  "dart_tests_per_profile": 56,
+  "simulated_native_lifecycle_cycles": 10000,
+  "exactly_once_stop_completions": 20000,
+  "native_evaluation": {
+    "run_id": 40269565499,
+    "source_revision": "ceb62d677549fa610033d01528ac25c1b22ef7e7",
+    "all_jobs_passed": true
+  },
+  "physical_device_tests_executed": false,
+  "installation_test_executed": false,
+  "production_ready": false
+}

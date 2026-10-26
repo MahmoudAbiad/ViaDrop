@@ -89,3 +89,14 @@ artifact. App licensing remains proprietary; see LICENSE_AUDIT.md.
 
 See [the two-phone color test procedure](docs/COLOR_DEVICE_TEST.md). Physical
 camera, installation and two-device transfer tests remain unexecuted here.
+
+
+## Reliability checkpoint — 0.3.1
+
+Screen-owned native sessions, cancellable optical startup, joined cleanup
+completion and shared camera/audio wakelock leases now prevent stale route
+cleanup from affecting another transfer. Both APK profiles passed 56 Flutter
+tests, analysis and release/signature checks; a host simulation covered 10,000
+lifecycle cycles. Physical-device validation remains separate. Existing 0.3.0
+APKs are unchanged. See [the lifecycle report](docs/LIFECYCLE_0_3_1.md) and
+[build provenance](docs/BUILD_0_3_1.json).

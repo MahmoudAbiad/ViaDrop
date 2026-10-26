@@ -62,3 +62,28 @@ Real Android navigation/background/camera stress, memory/thermal measurements,
 and actual two-phone transfers remain unexecuted. Further lifecycle review is
 needed for native audio ownership and transfer-manager isolate completion during
 route disposal; this milestone does not declare those separate paths audited.
+
+
+## Recorded automated result — 2026-10-26 (Asia/Damascus)
+
+Application revision: 7fa98332e5ff55e8597e1ef800cecb5238c851e1.
+Both complete APK workflows passed 56 Flutter tests, analysis, host state
+simulations, release build, minSdk/ABI/native/notice checks and APK signature
+verification:
+
+- Modern ARM64, API24+: https://github.com/MahmoudAbiad/ViaDrop/actions/runs/40270106347
+- Android6 ARM32, API23+: https://github.com/MahmoudAbiad/ViaDrop/actions/runs/40270106323
+
+The modern APK verifies with signature scheme v2; legacy verifies with v1/v2.
+Signatures are for internal testing. The new version is 0.3.1+5; the previously
+delivered 0.3.0 files were not replaced.
+
+The unchanged native component and the application ownership helper additionally
+passed color evaluation run 40269565499 at ceb62d6 (all four jobs, including
+API23 compilation). The later 7fa9833 revision changes only profile UI/start
+eligibility and documentation; its native ownership code is identical.
+
+See BUILD_0_3_1.json for artifact provenance. Artifact digests there identify the
+Actions ZIP archives, not an independently downloaded APK hash. No new physical
+installation, camera capture, phone-to-phone transfer or performance claim is
+made by this result. Those tests remain deferred until devices are available.
