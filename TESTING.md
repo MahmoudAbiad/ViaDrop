@@ -205,3 +205,13 @@ See [the acoustic report](docs/AUDIO_LIFECYCLE_0_3_2.md) for permission, queued
 work, event identity and real-file/isolate cancellation tests. Final complete
 APK/analysis/test results are recorded with their exact source revision below.
 Physical acoustic acceptance remains unexecuted.
+
+
+Final acoustic hardening result at 8f85eef: modern run 40275135298 and Android6
+run 40275135371 both passed 66 Flutter tests, analysis, native ownership/drain
+simulations and release APK/signature checks. The suite includes real encryption
+and verification in isolates with cancellation/disposal checks, plus mocked
+permission, native readiness, playback and event-identity cases. Generic state
+and acoustic worker-drain models each exercised 10,000 cycles. No handset
+installation, microphone/speaker loopback or two-phone transfer was performed.
+See docs/AUDIO_LIFECYCLE_0_3_2.md and docs/BUILD_0_3_2.json for evidence.

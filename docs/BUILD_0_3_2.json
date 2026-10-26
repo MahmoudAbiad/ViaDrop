@@ -1,0 +1,39 @@
+{
+  "version": "0.3.2+6",
+  "source_revision": "8f85eefa6a1c6db36efea2f23e59c2921d294588",
+  "modern": {
+    "run_id": 40275135298,
+    "job_id": 121416175537,
+    "artifact_id": 12630281510,
+    "artifact_zip_digest": "sha256:54eccd30d63ffe4c890b026b715f96869d98b829f5dcdee271a671cec584a9cc",
+    "apk_bytes": 35483641,
+    "minimum_android_api": 24,
+    "signature_schemes": [
+      "v2"
+    ]
+  },
+  "legacy": {
+    "run_id": 40275135371,
+    "job_id": 121416175894,
+    "artifact_id": 12630350930,
+    "artifact_zip_digest": "sha256:341531fd2bae1ea7978b884c9d0a1368abf18fa5578cd09d55e9b2e499e0400f",
+    "apk_bytes": 27464034,
+    "minimum_android_api": 23,
+    "signature_schemes": [
+      "v1",
+      "v2"
+    ]
+  },
+  "flutter_tests_per_profile": 66,
+  "generic_session_simulation_cycles": 10000,
+  "acoustic_two_worker_drain_cycles": 10000,
+  "native_component_and_helpers_evaluation": {
+    "run_id": 40273459880,
+    "source_revision": "c60786939432837f837210d6e58639e796d9cbd5",
+    "all_jobs_passed": true
+  },
+  "physical_audio_tests_executed": false,
+  "installation_tests_executed": false,
+  "measured_phone_throughput": false,
+  "production_ready": false
+}

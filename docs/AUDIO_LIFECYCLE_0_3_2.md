@@ -78,3 +78,26 @@ interruption by other audio apps, sustained CPU/memory use and phone-to-phone
 transfers require hardware testing. Host tests and APK builds do not establish
 J7/A24 compatibility or measured acoustic throughput. Acoustic modes retain their
 48 KiB input / 64 KiB encrypted limits and one-way start announcement.
+
+
+## Recorded result — 2026-10-26 (Asia/Damascus)
+
+Final application revision: 8f85eefa6a1c6db36efea2f23e59c2921d294588.
+Both complete workflows passed 66 Flutter tests, static analysis, native lifecycle
+simulations, release compilation, minSdk/ABI/native/notice checks and official
+APK signature verification:
+
+- Modern ARM64 / API24+: https://github.com/MahmoudAbiad/ViaDrop/actions/runs/40275135298
+- Android6 ARM32 / API23+: https://github.com/MahmoudAbiad/ViaDrop/actions/runs/40275135371
+
+The modern APK verifies with v2 signing; legacy verifies with v1 and v2.
+These are internal-test signing identities. App APK compilation/signature
+verification does not constitute installation or an audio-driver runtime test.
+The unchanged native component and Java ownership/drain helpers also passed
+the separate evaluation at c607869 (run 40273459880), including the helper API23
+boot-classpath check. That check is not a Kotlin audio hardware execution test.
+
+The generated 0.3.2 APKs are available in those runs. Earlier delivered 0.3.0
+files and the previous 0.3.1 build records were not replaced. BUILD_0_3_2.json
+records exact provenance; its digests identify artifact ZIPs, not locally
+recomputed standalone APK digests. Physical acceptance above remains unexecuted.

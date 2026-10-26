@@ -100,3 +100,16 @@ tests, analysis and release/signature checks; a host simulation covered 10,000
 lifecycle cycles. Physical-device validation remains separate. Existing 0.3.0
 APKs are unchanged. See [the lifecycle report](docs/LIFECYCLE_0_3_1.md) and
 [build provenance](docs/BUILD_0_3_1.json).
+
+
+## Acoustic reliability checkpoint — 0.3.2
+
+Acoustic operations now have independent client identities, cancellable
+permission/startup, worker-owned PCM hardware and a cleanup barrier before native
+ownership can be reused. Capture stops after full payload reconstruction, before
+file verification. Stale isolate results are rejected after disposal or operation
+replacement. Both APK profiles passed 66 Flutter tests, analysis and signed
+release builds; device audio acceptance remains unexecuted. Wire profiles and
+48 KiB input / 64 KiB encrypted limits are unchanged. See
+[the acoustic report](docs/AUDIO_LIFECYCLE_0_3_2.md) and
+[build provenance](docs/BUILD_0_3_2.json).
