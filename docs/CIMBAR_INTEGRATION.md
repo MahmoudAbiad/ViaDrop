@@ -79,3 +79,31 @@ rows before upstream cell readers traverse pixels. The application remains
 separate from this MPL-2.0 component. This is not an Android ABI build, a camera
 test, or an on-device throughput result. Android camera capture, YUV conversion,
 rotation/lifecycle handling, cross-compilation and Flutter display remain pending.
+
+
+## Android build checkpoint — 2026-10-26 (Asia/Damascus)
+
+Run https://github.com/MahmoudAbiad/ViaDrop/actions/runs/40250409302 passed both
+Android cross-build jobs at dc19f23: ELF64/AArch64 and ELF32/ARM, with the expected
+JNI encode/decode exports. Production Java adapters, including CameraImageDecoder,
+compiled against android-23/android.jar with Java 8 bytecode compatibility.
+OpenCV Android SDK 4.10.0 is checked against the upstream published SHA-256;
+NDK 28.2.13676358 and the CIMBAR source revision remain pinned.
+
+ARM32 initially failed with __tls_get_addr after upstream LTO. The Android
+component now explicitly uses emulated TLS and disables upstream IPO for its
+native object libraries, retaining ordinary Release optimization and thread-local
+configuration. The resulting cross-build passed; on-device loading is untested.
+
+The YUV converter covers plane offsets, row/pixel strides, truncated buffers,
+limited-range BT.601/BT.709 selection and right-angle rotations. Its host tests
+passed in run 40249613825; repeated host jobs may still be running independently
+of the completed Android jobs above.
+
+CameraImageDecoder accepts an acquired YUV_420_888 Image, performs conversion,
+rotation and native decoding on a caller-supplied worker, and closes the Image
+in finally. Non-full crops and unsupported matrices/formats must be handled
+explicitly; there is no silent format substitution. Camera opening/session
+management, bounded frame scheduling with cancellation generation, Flutter
+rendering, packaging/notices and physical two-device tests are still pending.
+No APK yet includes or advertises the color codec.

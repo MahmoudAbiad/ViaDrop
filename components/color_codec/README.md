@@ -14,9 +14,10 @@ Rectified images must match the codec's exact geometry; camera images can use
 the upstream extractor path. Bad data produces no output packet.
 
 `ColorCodec.java` + `jni.cpp` provide the JNI boundary for later Android wiring.
-Tests currently target host C++/JVM, not Android ABI or a physical camera. RGB
-rows can be padded; YUV-to-RGB conversion, rotation, generation cancellation,
-CameraX analysis and Flutter display remain to implement. Call on a bounded
+Host C++/JVM tests are separate from the Android ARM32/ARM64 cross-builds.
+Neither is a physical camera runtime test. RGB
+rows can be padded; YUV-to-RGB conversion and rotation are implemented and tested separately.
+Capture scheduling, generation cancellation and Flutter display remain to implement. Call on a bounded
 worker; never on Flutter/Android UI thread. No color option is enabled in the app.
 
 CI exercises binary packets, stride padding, malformed buffers and bounds.
