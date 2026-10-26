@@ -1,7 +1,7 @@
 name: viadrop
 description: Offline file sharing over light, sound, LAN and Bluetooth.
 publish_to: none
-version: 0.3.2+6
+version: 0.4.0+7
 environment:
   sdk: '>=3.8.0 <4.0.0'
 dependencies:

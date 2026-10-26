@@ -6,6 +6,8 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'screens/qr_transfer_page.dart';
 import 'screens/audio_transfer_page.dart';
+import 'radio_transfer_page.dart';
+import 'core/transfer.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -139,15 +141,37 @@ class ViaDropHome extends StatelessWidget {
               onTap: () => _open(context, const AudioTransferPage()),
             ),
           ),
+          const SizedBox(height: 8),
+          Card(child:ListTile(
+            leading:const CircleAvatar(child:Icon(Icons.wifi)),
+            title:const Text('Wi-Fi • شبكة محلية'),
+            subtitle:const Text('ملفات كبيرة عبر الراوتر أو نقطة اتصال • تجريبي'),
+            trailing:const Icon(Icons.chevron_left),
+            onTap:()=>_open(context,const RadioTransferEntry(channel:Channel.wifi)),
+          )),
+          const SizedBox(height: 8),
+          Card(child:ListTile(
+            leading:const CircleAvatar(child:Icon(Icons.bluetooth)),
+            title:const Text('Bluetooth Classic'),
+            subtitle:const Text('نقل مباشر بين أجهزة مقترنة في Android • تجريبي'),
+            trailing:const Icon(Icons.chevron_left),
+            onTap:()=>_open(context,const RadioTransferEntry(channel:Channel.bluetooth)),
+          )),
           const SizedBox(height: 20),
           const Text(
-            'لا تحتاج كلمة مرور أو إنترنت. المفاتيح تُنشأ تلقائياً '
-            'لكل عملية نقل، ويظل المحتوى مشفّراً.',
+            'الكاميرا والصوت لا يحتاجان كلمة مرور. أما Wi-Fi وBluetooth فيتطلبان عبارة مرور مشتركة من 12 حرفاً على الأقل. '
+            'لا يلزم الإنترنت لأي قناة.',
           ),
           const SizedBox(height: 8),
           const Text(
-            'ميزات الكاميرا والصوت تجريبية ويجب التحقق منها بين هاتفين. '
-            'الواي فاي والبلوتوث سيأتيان في إصدار لاحق.',
+            'في الكاميرا والصوت تُرسل مفاتيح الجلسة عبر الإشارة نفسها؛ '
+            'يمكن لمن يلتقط الإشارة ومفتاحها قراءة المحتوى. لا نفترض خصوصية هذه القناتين تجاه المراقبين القريبين.',
+            style:TextStyle(fontSize:12),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'القنوات الأربع تجريبية ولم تُعتمد باختبار هاتفين بعد. '
+            'لا يوجد تحويل تلقائي بين القنوات. Wi-Fi Direct وWi-Fi Aware غير متاحين في هذا الإصدار.',
             style: TextStyle(fontSize: 12),
           ),
         ],

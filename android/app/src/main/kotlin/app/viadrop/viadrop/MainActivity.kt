@@ -1,5 +1,4 @@
 package app.viadrop.viadrop
-import android.bluetooth.*
 import android.content.Context
 import android.content.pm.PackageManager
 import android.hardware.camera2.CameraCharacteristics
@@ -8,19 +7,16 @@ import android.content.Intent
 import android.media.*
 import android.os.Handler
 import android.os.Looper
-import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 import java.io.*
-import java.util.UUID
 import java.util.concurrent.Executors
-import java.util.concurrent.ArrayBlockingQueue
-import java.util.concurrent.TimeUnit
 class MainActivity:FlutterActivity(){
  private var colorBridge:ColorBridge?=null
  private var audioBridge:AudioBridge?=null
+ private var bluetoothBridge:BluetoothBridge?=null
  companion object{init{System.loadLibrary("viadrop_audio")}}
  private external fun waveInit():Long
  private external fun waveFree(h:Long)
@@ -32,15 +28,11 @@ class MainActivity:FlutterActivity(){
  private external fun ofdmDecode(h:Long,data:ByteArray):ByteArray?
  private val main=Handler(Looper.getMainLooper());private val workers=Executors.newCachedThreadPool()
  private var sink:EventChannel.EventSink?=null
- @Volatile private var socket:BluetoothSocket?=null
- @Volatile private var server:BluetoothServerSocket?=null
- private val decision=ArrayBlockingQueue<Boolean>(1)
- private val service=UUID.fromString("4ec874f6-7276-44c2-8c72-e779ae6080b1")
- private val adapter:BluetoothAdapter? get()=getSystemService(BluetoothManager::class.java)?.adapter
  private fun emit(m:Map<String,Any>){main.post{sink?.success(m)}}
  override fun configureFlutterEngine(engine:FlutterEngine){
   super.configureFlutterEngine(engine)
   colorBridge=ColorBridge(this,engine)
+  bluetoothBridge=BluetoothBridge(this,engine)
   audioBridge=AudioBridge(this,engine,object:AudioCodec{
    override fun waveInit()=this@MainActivity.waveInit()
    override fun waveFree(handle:Long)=this@MainActivity.waveFree(handle)
@@ -59,13 +51,6 @@ class MainActivity:FlutterActivity(){
    fun done(v:Any?=null){main.post{result.success(v)}}
    fun fail(e:Exception){main.post{result.error("NATIVE",e.message,null)}}
    when(call.method){
-    "btAvailable"->try{done(adapter?.isEnabled==true)}catch(e:Exception){fail(e)}
-    "btPeers"->try{done(adapter?.bondedDevices?.map{mapOf("address" to it.address,"name" to(it.name?:it.address))}?:emptyList<Any>())}catch(e:Exception){fail(e)}
-    "btSettings"->{startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS));done()}
-    "btAccept"->{decision.offer(call.argument<Boolean>("accept")==true);done()}
-    "btStop"->{stopBluetooth();done()}
-    "btListen"->workers.execute{try{listenBluetooth();done()}catch(e:Exception){fail(e)}}
-    "btSend"->workers.execute{try{sendBluetooth(call.argument<String>("address")!!,call.argument<String>("path")!!);done()}catch(e:Exception){fail(e)}}
     "physicalCapabilities"->workers.execute{
      try{done(probePhysicalCapabilities())}catch(e:Exception){fail(e)}
     }
@@ -123,31 +108,6 @@ class MainActivity:FlutterActivity(){
    "ultrasoundOutput" to ultrasoundOutput
   )
  }
- private fun sendBluetooth(address:String,path:String){
-  val a=adapter?:throw IOException("Bluetooth unavailable");val device=a.getRemoteDevice(address)
-  if(device.bondState!=BluetoothDevice.BOND_BONDED)throw IOException("Pair in Android settings first")
-  a.cancelDiscovery();val s=device.createRfcommSocketToServiceRecord(service);socket=s
-  try{
-   s.connect();val out=DataOutputStream(s.outputStream);val input=DataInputStream(s.inputStream);val file=File(path);val length=file.length();if(length>1074790400L)throw IOException("Size limit")
-   out.writeInt(0x56444231);out.writeLong(length);out.flush();if(input.read()!=1)throw IOException("Receiver declined")
-   file.inputStream().use{f->val b=ByteArray(65536);var sent=0L;while(true){val n=f.read(b);if(n<0)break;out.write(b,0,n);sent+=n;emit(mapOf("type" to "btProgress","done" to sent,"total" to length))}};out.flush();if(input.read()!=2)throw IOException("Receiver verification failed")
-  }finally{s.close();if(socket===s)socket=null}
- }
- private fun listenBluetooth(){
-  if(server!=null)return;val ss=adapter?.listenUsingRfcommWithServiceRecord("ViaDrop",service)?:throw IOException("Bluetooth unavailable");server=ss
-  workers.execute{try{while(server===ss){val s=ss.accept();socket=s;var file:File?=null
-   try{
-    if(s.remoteDevice.bondState!=BluetoothDevice.BOND_BONDED)throw IOException("Unpaired peer")
-    val input=DataInputStream(s.inputStream);val out=s.outputStream;if(input.readInt()!=0x56444231)throw IOException("Invalid header")
-    val length=input.readLong();if(length<0||length>1074790400L)throw IOException("Size limit")
-    decision.clear();emit(mapOf("type" to "btOffer","name" to(s.remoteDevice.name?:s.remoteDevice.address),"size" to length))
-    if(decision.poll(60,TimeUnit.SECONDS)!=true){out.write(0);continue};out.write(1);out.flush();file=File.createTempFile("bt-",".vdp",cacheDir)
-    file.outputStream().use{f->val b=ByteArray(65536);var done=0L;while(done<length){val n=input.read(b,0,minOf(b.size.toLong(),length-done).toInt());if(n<=0)throw EOFException();f.write(b,0,n);done+=n;emit(mapOf("type" to "btProgress","done" to done,"total" to length))}}
-    decision.clear();emit(mapOf("type" to "btFile","path" to file.absolutePath));out.write(if(decision.poll(180,TimeUnit.SECONDS)==true)2 else 0);out.flush()
-   }catch(e:Exception){if(server===ss)emit(mapOf("type" to "error","message" to(e.message?:"Bluetooth error")))}finally{file?.delete();s.close();if(socket===s)socket=null}
-  }}catch(e:Exception){if(server===ss)emit(mapOf("type" to "error","message" to(e.message?:"Bluetooth stopped")))}}
- }
- private fun stopBluetooth(){val ss=server;server=null;try{ss?.close()}catch(_:Exception){};try{socket?.close()}catch(_:Exception){};socket=null;decision.offer(false)}
  private fun importShared(i:Intent?):List<String>{
   if(i==null)return emptyList();val result=mutableListOf<String>()
   if(i.action==Intent.ACTION_SEND&&i.type=="text/plain"){i.getStringExtra(Intent.EXTRA_TEXT)?.let{val f=File.createTempFile("shared-",".txt",cacheDir);f.writeText(it);result.add(f.path)}}
@@ -158,5 +118,5 @@ class MainActivity:FlutterActivity(){
  }
  override fun onNewIntent(intent:Intent){super.onNewIntent(intent);setIntent(intent);emit(mapOf("type" to "shared"))}
  override fun onPause(){audioBridge?.stop(null);colorBridge?.stop(null);super.onPause()}
- override fun onDestroy(){audioBridge?.dispose();colorBridge?.dispose();stopBluetooth();workers.shutdownNow();super.onDestroy()}
+ override fun onDestroy(){audioBridge?.dispose();colorBridge?.dispose();bluetoothBridge?.dispose();workers.shutdownNow();super.onDestroy()}
 }

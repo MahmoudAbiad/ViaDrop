@@ -1,3 +1,5 @@
+> **0.4.0 experimental radio integration:** LAN streaming and paired secure Bluetooth RFCOMM are now accessible from Home. Shared passphrase (12+ characters), explicit receiver approval, and verified VDP1 file reconstruction are required. Wi-Fi Direct, Wi-Fi Aware, BLE file transfer and resume are not implemented. Physical two-phone tests remain unexecuted. See [radio implementation notes](docs/RADIO_0_4_0.md).
+
 # ViaDrop
 
 **Share beyond connections. — شاركها بأي طريقة.**

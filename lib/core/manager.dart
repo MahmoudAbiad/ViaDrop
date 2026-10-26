@@ -14,10 +14,10 @@ class TransferManager extends ChangeNotifier {
  List<Map<String,dynamic>> history=[];late Directory work,received;final clock=Stopwatch();
  double get bytesPerSecond=>clock.elapsedMilliseconds>0?status.done*1000/clock.elapsedMilliseconds:0;
  Future<void> initialize()async{
-  work=Directory('${(await getTemporaryDirectory()).path}/sessions');await work.create(recursive:true);
+  final sessions=Directory('${(await getTemporaryDirectory()).path}/sessions');await sessions.create(recursive:true);
+  work=await sessions.createTemp('session-');
   received=Directory('${(await getApplicationDocumentsDirectory()).path}/Received');await received.create(recursive:true);
-  await for(final f in work.list()){if(f is File)await f.delete();}
-  await for(final f in received.list()){if(f is File&&f.path.endsWith('.partial'))await f.delete();}
+  // Each route owns staging; never delete another route's in-flight files.
   final prefs=await SharedPreferences.getInstance();try{history=(jsonDecode(prefs.getString('history')??'[]') as List).map((e)=>Map<String,dynamic>.from(e)).toList();}catch(_){history=[];}
  }
  void update(Phase phase,{int done=0,int total=0,String message=''}){
