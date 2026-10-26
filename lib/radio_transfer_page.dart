@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'core/manager.dart';
+import 'core/screen_awake.dart';
 import 'core/transfer.dart';
 import 'engines/lan.dart';
 import 'engines/bluetooth.dart';
@@ -53,6 +54,9 @@ class _RadioTransferPageState extends State<RadioTransferPage> with WidgetsBindi
   File? _selected;
   String? _acceptedPass;
   String _notice = 'أدخل عبارة مرور متطابقة على الجهازين (12 حرفاً على الأقل).';
+  BuildContext? _offerContext;
+  WakeLockLease? _receiveAwake;
+  WakeLockLease? _sendAwake;
   int _operation=0;
   bool _offerPending=false;
   bool _verifying=false;
@@ -130,7 +134,7 @@ class _RadioTransferPageState extends State<RadioTransferPage> with WidgetsBindi
     final choice = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) { _offerContext=ctx; return AlertDialog(
         title: const Text('طلب استقبال ملف'),
         content: Text('من: ' + sender + '\nالحجم المشفّر: ' +
             _size(bytes) + '\nلن يُحفظ الملف قبل فك التشفير والتحقق منه.'),
@@ -144,8 +148,9 @@ class _RadioTransferPageState extends State<RadioTransferPage> with WidgetsBindi
             child: const Text('قبول'),
           ),
         ],
-      ),
-    );
+      );},
+    ).timeout(const Duration(seconds:55),onTimeout:(){_dismissOffer();return false;});
+    _offerContext=null;
     _offerPending=false;
     if (choice == true && mounted && operation==_operation && _listening && !_stopping) {
       _acceptedPass = passAtOffer;
@@ -157,6 +162,7 @@ class _RadioTransferPageState extends State<RadioTransferPage> with WidgetsBindi
 
   Future<void> _saveIncoming(File file, Channel channel) async {
     if (!mounted) throw StateError('Receiver closed');
+    final operation=_operation;
     final pass = _acceptedPass;
     if (pass == null || !_busy || _sending || _verifying) throw StateError('No accepted transfer');
     setState(() {
@@ -169,15 +175,18 @@ class _RadioTransferPageState extends State<RadioTransferPage> with WidgetsBindi
       widget.manager.begin();
       widget.manager.update(Phase.waiting);
       final output = await widget.manager.accept(file, pass, channel);
-      if(mounted){setState(()=>_received=output);}
+      if(!mounted||operation!=_operation)throw const TransferCancelled();
+      setState(()=>_received=output);
       _show('تم استلام الملف بنجاح: ' + output.uri.pathSegments.last);
     } catch (e) {
-      _show('لم يُحفظ الملف: فشل التحقق أو عبارة المرور غير صحيحة: ' +
+      if(operation==_operation)_show('لم يُحفظ الملف: فشل التحقق أو عبارة المرور غير صحيحة: ' +
           e.toString());
       rethrow;
     } finally {
-      _acceptedPass = null;
-      if (mounted) setState(() {_busy = false;_verifying=false;});
+      if(operation==_operation){
+       _acceptedPass = null;
+       if (mounted) setState(() {_busy = false;_verifying=false;});
+      }
     }
   }
 
@@ -194,7 +203,7 @@ class _RadioTransferPageState extends State<RadioTransferPage> with WidgetsBindi
     final type = raw['type'];
     if (type == 'error'||type=='stopped') {
       _transportError(raw['message']??'Bluetooth stopped');
-      if(type=='stopped')setState(()=>_listening=false);
+      if(type=='stopped'){setState(()=>_listening=false);unawaited(_receiveAwake?.dispose()??Future<void>.value());_receiveAwake=null;}
     } else if (type == 'offer') {
       unawaited(_offer(
         (raw['name'] ?? 'جهاز قريب').toString(),
@@ -238,14 +247,20 @@ class _RadioTransferPageState extends State<RadioTransferPage> with WidgetsBindi
       return;
     }
     if (!_validPass()) return;
+    final operation=_operation;
+    final awake=ScreenAwake.lease();_receiveAwake=awake;
     try {
+      await awake.acquire();
+      if(!mounted||operation!=_operation)throw const TransferCancelled();
       await _engine!.receive();
+      if(!mounted||operation!=_operation)throw const TransferCancelled();
       if (mounted) setState(() {
         _listening = true;
         _notice = 'الاستقبال نشط. استخدم نفس عبارة المرور على الجهاز المرسل.';
       });
     } catch (e) {
-      _show('تعذر تشغيل الاستقبال: ' + e.toString());
+      await awake.dispose();if(identical(_receiveAwake,awake))_receiveAwake=null;
+      if(operation==_operation)_show('تعذر تشغيل الاستقبال: ' + e.toString());
     }
   }
 
@@ -314,6 +329,7 @@ class _RadioTransferPageState extends State<RadioTransferPage> with WidgetsBindi
       return;
     }
     File? sealed;
+    final awake=ScreenAwake.lease();_sendAwake=awake;
     final operation=++_operation;
     setState(() {
       _busy = true;
@@ -323,6 +339,8 @@ class _RadioTransferPageState extends State<RadioTransferPage> with WidgetsBindi
       _notice = 'جار تجهيز الملف المشفّر...';
     });
     try {
+      await awake.acquire();
+      if(!mounted||operation!=_operation)throw const TransferCancelled();
       widget.manager.begin();
       sealed = await widget.manager.prepare(_selected!, _passValue);
       if (!mounted||operation!=_operation)throw const TransferCancelled();
@@ -347,6 +365,7 @@ class _RadioTransferPageState extends State<RadioTransferPage> with WidgetsBindi
     } catch (e) {
       if(operation==_operation)_show('توقف الإرسال: ' + e.toString());
     } finally {
+      await awake.dispose();if(identical(_sendAwake,awake))_sendAwake=null;
       if (sealed != null && await sealed.exists()) await sealed.delete();
       if (mounted&&operation==_operation) setState(() {
         _busy = false;
@@ -357,15 +376,20 @@ class _RadioTransferPageState extends State<RadioTransferPage> with WidgetsBindi
 
   void _transportError(Object error){
     if(!mounted||_stopping)return;
+    _dismissOffer();
     if(!_sending&&!_verifying)setState((){_busy=false;_acceptedPass=null;});
     _show('خطأ النقل: $error');
   }
 
+  void _dismissOffer(){final dialog=_offerContext;_offerContext=null;if(dialog!=null&&dialog.mounted)Navigator.of(dialog).pop(false);}
+
   Future<void> _stop()async {
     if(_stopping)return;
-    ++_operation;widget.manager.cancel();
+    ++_operation;widget.manager.cancel();_dismissOffer();
+    final receiveAwake=_receiveAwake;_receiveAwake=null;final sendAwake=_sendAwake;_sendAwake=null;
     setState((){_stopping=true;_ready=false;_listening=false;_acceptedPass=null;});
     try{
+      await receiveAwake?.dispose();await sendAwake?.dispose();
       await _engine?.cancel();
       await _peerSub?.cancel();await _nativeSub?.cancel();
       await _engine?.dispose();_engine=null;
@@ -396,6 +420,8 @@ class _RadioTransferPageState extends State<RadioTransferPage> with WidgetsBindi
     ++_operation;widget.manager.cancel();
     _peerSub?.cancel();
     _nativeSub?.cancel();
+    unawaited(_receiveAwake?.dispose()??Future<void>.value());
+    unawaited(_sendAwake?.dispose()??Future<void>.value());
     unawaited(_engine?.dispose() ?? Future<void>.value());
     final note=_note;if(note!=null)unawaited(note.exists().then((exists)async{if(exists)await note.delete();}));
     _pass.dispose();

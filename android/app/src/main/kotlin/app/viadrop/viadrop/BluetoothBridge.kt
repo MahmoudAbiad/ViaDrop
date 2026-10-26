@@ -78,13 +78,14 @@ class BluetoothBridge(private val activity: FlutterActivity, engine: FlutterEngi
         val error=failure
         main.post {
          if(active===s){
-          if(error!=null&&s.running||s.error!=null)sink?.success(mapOf("type" to "stopped","message" to (s.error?:error?.message?:"Bluetooth stopped"),"clientId" to s.client,"generation" to s.generation))
+          try{if(error!=null&&s.running||s.error!=null)sink?.success(mapOf("type" to "stopped","message" to (s.error?:error?.message?:"Bluetooth stopped"),"clientId" to s.client,"generation" to s.generation))}catch(_:RuntimeException){}
           val pending=s.result;s.result=null
-          if(pending!=null){
+          if(pending!=null)try{
            if(!s.running)pending.error("BT_CANCELLED",s.error?:"Bluetooth cancelled",null)
            else if(error!=null)pending.error("BT_IO",error.message,null)
            else pending.success(mapOf("generation" to s.generation))
           }
+          catch(_:RuntimeException){}
           active=null
           val replies=s.stops.toList();s.stops.clear();for(reply in replies)try{reply.success(null)}catch(_:RuntimeException){}
           if(disposed){io.shutdown();guard.shutdown()}
@@ -113,7 +114,7 @@ class BluetoothBridge(private val activity: FlutterActivity, engine: FlutterEngi
  private fun emit(s:Session,event:Map<String,Any>){
   main.post { if(active===s&&s.running)sink?.success(event+mapOf("clientId" to s.client,"generation" to s.generation)) }
  }
- private fun ready(s:Session){main.post {if(active===s&&s.running){val r=s.result;s.result=null;r?.success(mapOf("generation" to s.generation))}}}
+ private fun ready(s:Session){main.post {if(active===s&&s.running){val r=s.result;s.result=null;try{r?.success(mapOf("generation" to s.generation))}catch(_:RuntimeException){}}}}
  private fun decide(s:Session,type:String,extra:Map<String,Any>,seconds:Long):Boolean {
   s.decisions.clear();val id=ids.incrementAndGet();s.decisionId=id
   // The watchdog also closes the socket if Flutter goes away during consent.
