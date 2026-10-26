@@ -1,7 +1,8 @@
 #include <jni.h>
 #include <vector>
 #include "ggwave/ggwave.h"
-extern "C" JNIEXPORT jlong JNICALL Java_app_viadrop_viadrop_MainActivity_waveInit(JNIEnv*,jobject){auto p=ggwave_getDefaultParameters();p.sampleRateInp=p.sampleRateOut=48000;p.sampleFormatInp=GGWAVE_SAMPLE_FORMAT_I16;p.sampleFormatOut=GGWAVE_SAMPLE_FORMAT_I16;return ggwave_init(p);}
+#include "wave_protocols.h"
+extern "C" JNIEXPORT jlong JNICALL Java_app_viadrop_viadrop_MainActivity_waveInit(JNIEnv*,jobject){configureViaDropWaveProtocols();auto p=ggwave_getDefaultParameters();p.sampleRateInp=p.sampleRateOut=48000;p.sampleFormatInp=GGWAVE_SAMPLE_FORMAT_I16;p.sampleFormatOut=GGWAVE_SAMPLE_FORMAT_I16;return ggwave_init(p);}
 extern "C" JNIEXPORT void JNICALL Java_app_viadrop_viadrop_MainActivity_waveFree(JNIEnv*,jobject,jlong h){ggwave_free((ggwave_Instance)h);}
 extern "C" JNIEXPORT jbyteArray JNICALL Java_app_viadrop_viadrop_MainActivity_waveEncode(JNIEnv* e,jobject,jlong h,jbyteArray data,jboolean high){
  int len=e->GetArrayLength(data);if(len<=0||len>140)return nullptr;std::vector<jbyte>b(len);e->GetByteArrayRegion(data,0,len,b.data());

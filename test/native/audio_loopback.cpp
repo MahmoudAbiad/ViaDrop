@@ -1,5 +1,7 @@
 // Deterministic PCM simulation, not a speaker/microphone hardware test.
 #include "ggwave/ggwave.h"
+#include "../../android/app/src/main/cpp/wave_protocols.h"
+#include <string>
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
@@ -7,6 +9,7 @@
 #include <vector>
 
 void roundTrip(int size, ggwave_ProtocolId mode, bool noisy) {
+    configureViaDropWaveProtocols();
     auto p = ggwave_getDefaultParameters();
     p.sampleRateInp = p.sampleRateOut = 48000;
     p.sampleFormatInp = p.sampleFormatOut = GGWAVE_SAMPLE_FORMAT_I16;
@@ -14,6 +17,9 @@ void roundTrip(int size, ggwave_ProtocolId mode, bool noisy) {
     if (tx < 0 || rx < 0) throw std::runtime_error("init failed");
     std::vector<uint8_t> data(size);
     for (int i = 0; i < size; ++i) data[i] = (i * 71 + 19) & 255;
+    // The diagnostic probe is audible-only and has a fixed public payload.
+    if (size == 8) { const char probe[]="VDPROBE1"; std::copy(probe,probe+8,data.begin()); }
+    if(size==71){const std::string start="VDS3:00000001:"+std::string(43,'A')+":audio-audible";if(start.size()!=data.size())throw std::runtime_error("start fixture length");std::copy(start.begin(),start.end(),data.begin());}
     int n = ggwave_encode(tx, data.data(), size, mode, 20, nullptr, 1);
     if (n <= 0 || n > 4000000 || n % 2) throw std::runtime_error("invalid waveform");
     std::vector<int16_t> pcm(n / 2 + 48000, 0);
@@ -47,6 +53,9 @@ void roundTrip(int size, ggwave_ProtocolId mode, bool noisy) {
 int main() {
     ggwave_setLogFile(nullptr);
     for (auto mode : {GGWAVE_PROTOCOL_AUDIBLE_FAST, GGWAVE_PROTOCOL_ULTRASOUND_FAST})
-        for (int size : {8, 64, 73, 132, 140})
-            for (bool noisy : {false, true}) roundTrip(size, mode, noisy);
+        for (int size : {8, 64, 71, 73, 132, 140})
+            for (bool noisy : {false, true}) {
+                if(size==8 && mode!=GGWAVE_PROTOCOL_AUDIBLE_FAST) continue;
+                roundTrip(size, mode, noisy);
+            }
 }
