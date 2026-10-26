@@ -57,7 +57,7 @@ class PhysicalProfileSelector extends StatelessWidget {
                 ),
               ),
           ],
-          onChanged: !enabled ? null : (v) {
+          onChanged: !enabled || checking ? null : (v) {
             if (v != null && capabilities.availability(
                 physicalProfileById(v)!, sending: sending).enabled) {
               onChanged(v);

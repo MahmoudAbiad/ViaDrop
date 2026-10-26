@@ -45,4 +45,22 @@ void main() {
     expect(disabled, isNotEmpty);
     expect(disabled.first.enabled, isFalse);
   });
+  testWidgets('pending capability refresh disables mode changes and repeated probes',
+      (tester) async {
+    await tester.pumpWidget(MaterialApp(home: Scaffold(
+      body: SingleChildScrollView(child: PhysicalProfileSelector(
+        medium: PhysicalMedium.qr, capabilities: capabilities,
+        selectedId: 'qr-standard', enabled: true, checking: true,
+        onChanged: (_) => fail('Changed mode while probing'),
+        onRefresh: () => fail('Started overlapping probes'),
+      )),
+    )));
+    final dropdown = tester.widget<DropdownButton<String>>(
+        find.byWidgetPredicate((widget) => widget is DropdownButton<String>));
+    expect(dropdown.onChanged, isNull);
+    final refresh = tester.widget<TextButton>(
+        find.byWidgetPredicate((widget) => widget is TextButton));
+    expect(refresh.onPressed, isNull);
+  });
+
 }

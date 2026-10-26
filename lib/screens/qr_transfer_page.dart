@@ -124,7 +124,7 @@ class _QrTransferPageState extends State<QrTransferPage> with WidgetsBindingObse
       _profileId == null ? null : physicalProfileById(_profileId!);
 
   bool get _profileSupported =>
-      _profile != null && _capabilities.availability(_profile!, sending: _sendMode).enabled;
+      !_probing && _profile != null && _capabilities.availability(_profile!, sending: _sendMode).enabled;
 
   @override
   void dispose() {

@@ -92,7 +92,7 @@ class _AudioTransferPageState extends State<AudioTransferPage> {
       _profileId == null ? null : physicalProfileById(_profileId!);
 
   bool get _profileSupported =>
-      _profile != null && _capabilities.availability(_profile!).enabled;
+      !_probing && _profile != null && _capabilities.availability(_profile!).enabled;
 
   void _show(String message) {
     if (mounted) setState(() => _status = message);

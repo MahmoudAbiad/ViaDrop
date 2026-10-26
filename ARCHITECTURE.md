@@ -56,3 +56,16 @@ Camera and display resources release asynchronously; Flutter awaits cleanup
 before opening another native session. A camera start first relinquishes the
 MobileScanner instance used for the invitation. Backgrounding cancels the
 color session. Application restart/resume of a partial transfer is not claimed.
+
+
+## Session lifecycle hardening (0.3.1)
+
+Optical platform calls now carry a per-screen client identity. ColorSessionState
+arbitrates a single active native session and one asynchronous cleanup ticket;
+repeated stops join completion rather than polling. A late receiver-start reply
+can clean up only its exact generation. Flutter's shared event observer routes
+packets by client ID, retaining the platform handler while any screen observes.
+OpticalStartup invalidates pending preparation across stop/disposal. A shared
+WakeLockCoordinator serializes plugin operations using camera/audio screen
+leases, so late cleanup cannot disable another route's wakelock. See
+[the lifecycle regression report](docs/LIFECYCLE_0_3_1.md).

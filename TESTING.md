@@ -171,3 +171,13 @@ all tests, analysis, release build, minSdk/ABI/native/notice checks and official
 APK signature verification. APK artifact checksums and post-download inspection
 are recorded in docs/CIMBAR_INTEGRATION.md. This does not change the unexecuted
 physical-device test statuses above.
+
+
+## 0.3.1 lifecycle regressions
+
+See [docs/LIFECYCLE_0_3_1.md](docs/LIFECYCLE_0_3_1.md) for concrete triggers,
+ownership rules and coverage. The host native-state test passed locally,
+including 10,000 lifecycle cycles and 20,000 exactly-once cleanup replies.
+It does not open a camera, microphone or Android Surface. Automated APK build
+and Dart suite results for the final code revision are recorded separately.
+No physical-device acceptance status changes as a result of these simulations.
