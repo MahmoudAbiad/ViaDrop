@@ -30,3 +30,11 @@ selection is explicit (limited-range BT.601 or BT.709); the camera adapter must
 supply the actual color space or reject unsupported/unknown data spaces. It is
 not yet connected to an Android ImageReader/CameraX lifecycle. The input image
 must remain open during conversion and be closed by the caller afterward.
+
+The Android-specific `CameraImageDecoder` now accepts a real `android.media.Image`,
+requires YUV_420_888, converts/rotates its planes and calls native extraction.
+It closes the acquired image in a finally block, including on errors. Its source
+is compiled against API23 separately from host-JVM tests. This is a per-image
+adapter, not camera opening/session management or a Flutter screen. Capture
+scheduling, cancellation generations, runtime permission and display integration
+are still pending. It requires an explicit supported limited-range color matrix.
