@@ -31,3 +31,4 @@ cmake --build "$work/adapter" --target color_adapter_test viadrop_color_jni --pa
 mkdir -p "$work/classes"
 javac -d "$work/classes" "$root/components/color_codec/java/app/viadrop/color/"*.java
 java -Djava.library.path="$work/adapter" -cp "$work/classes" app.viadrop.color.CodecSmoke
+java -cp "$work/classes" app.viadrop.color.YuvSmoke

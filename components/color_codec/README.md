@@ -23,3 +23,10 @@ CI exercises binary packets, stride padding, malformed buffers and bounds.
 Passing host tests does not establish camera robustness, transfer rate, Android
 compilability or distribution clearance. The production Android CMake project
 intentionally does not yet include this component.
+
+`Yuv420Rgb` converts bounded planar/interleaved YUV420 buffers with explicit
+row/pixel strides, buffer offsets, and 0/90/180/270-degree rotation. Matrix
+selection is explicit (limited-range BT.601 or BT.709); the camera adapter must
+supply the actual color space or reject unsupported/unknown data spaces. It is
+not yet connected to an Android ImageReader/CameraX lifecycle. The input image
+must remain open during conversion and be closed by the caller afterward.
