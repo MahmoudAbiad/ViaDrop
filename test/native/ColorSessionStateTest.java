@@ -88,6 +88,15 @@ public final class ColorSessionStateTest {
         ownership.finishStop(ownedCleanup);
         check(!ownership.owns(20), "Owner retained after resource release");
         System.out.println("PASS delayed old-screen stop cannot cancel the new screen's session");
+        long sameScreenOld = ownership.begin(30);
+        ownership.finishStop(ownership.stopOwned(30, null));
+        long sameScreenNew = ownership.begin(30);
+        check(ownership.stopOwned(30, sameScreenOld, () -> replies.add("late camera reply ack")) == 0,
+            "Late camera reply acquired a new transfer's cleanup");
+        check(ownership.isCurrent(sameScreenNew), "Late camera reply stopped a new transfer on the same screen");
+        check(replies.contains("late camera reply ack"), "Late camera reply was not acknowledged");
+        ownership.finishStop(ownership.stopOwned(30, sameScreenNew, null));
+        System.out.println("PASS late startup replies cannot stop a newer transfer on the same screen");
 
         // Repeated navigation/background cycles must not accumulate waiters or
         // accept an old decoder result after opening the next session.

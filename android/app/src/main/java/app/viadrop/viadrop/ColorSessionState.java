@@ -53,6 +53,17 @@ public final class ColorSessionState {
         return stop(completed);
     }
 
+    /** For a late startup reply: even the same screen may now own a NEW
+     * native generation, which an old reply has no authority to stop. */
+    public long stopOwned(long clientId, long expectedGeneration, Runnable completed) {
+        requireOwner();
+        if (!owns(clientId) || !isCurrent(expectedGeneration)) {
+            if (completed != null) deliver(completed);
+            return 0;
+        }
+        return stop(completed);
+    }
+
     public boolean isCurrent(long token) {
         requireOwner();
         return !disposed && phase == Phase.ACTIVE && generation == token;

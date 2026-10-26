@@ -36,6 +36,6 @@ class ColorOpticalClient {
       throw StateError('Color renderer is busy; packet was not presented');
     }
   }
-  Future<void> stop() async => ColorOptical.methods.invokeMethod<void>(
-      'stop', {'clientId': _client});
+  Future<void> stop({int? generation}) async => ColorOptical.methods.invokeMethod<void>(
+      'stop', {'clientId': _client, if (generation != null) 'generation': generation});
 }

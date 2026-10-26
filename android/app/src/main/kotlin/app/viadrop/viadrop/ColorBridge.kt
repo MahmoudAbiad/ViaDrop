@@ -62,7 +62,7 @@ class ColorBridge(private val activity: Activity, engine: FlutterEngine) {
                 try {
                     when (call.method) {
                         "probe" -> result.success(available())
-                        "stop" -> stop({ result.success(null) }, clientId())
+                        "stop" -> stop({ result.success(null) }, clientId(), call.argument<Number>("generation")?.toLong())
                         "senderStart" -> {
                             check(available()) { "Native color codec unavailable" }
                             val token = lifecycle.begin(clientId()).also { ownedStart = it }
@@ -177,9 +177,10 @@ class ColorBridge(private val activity: Activity, engine: FlutterEngine) {
     }
 
     /** Native cleanup completion precedes Surface/texture release. */
-    fun stop(after: (() -> Unit)?, clientId: Long? = null) {
+    fun stop(after: (() -> Unit)?, clientId: Long? = null, expectedGeneration: Long? = null) {
         val completed = after?.let { completion -> Runnable { completion() } }
         val ticket = if (clientId == null) lifecycle.stop(completed)
+            else if (expectedGeneration != null) lifecycle.stopOwned(clientId, expectedGeneration, completed)
             else lifecycle.stopOwned(clientId, completed)
         if (ticket == 0L) return
         cancelStartTimeout()

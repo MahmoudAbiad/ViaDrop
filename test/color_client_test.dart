@@ -26,7 +26,8 @@ void main() {
     await first.stop(); // client is known even before a native start replies
     await first.startSender();
     await first.present(Uint8List.fromList([1, 2, 3]));
-    await first.stop();
+    await first.stop(generation: 123);
+    expect((calls.last.arguments as Map)['generation'], 123);
     final firstId = (calls.first.arguments as Map)['clientId'];
     expect(firstId, greaterThan(0));
     for (final call in calls) {

@@ -449,7 +449,8 @@ class _QrTransferPageState extends State<QrTransferPage> with WidgetsBindingObse
       if (!mounted || !_scanData || _session != session) return;
       final camera = await _colorClient.startReceiver(_colorMatrix);
       if (!mounted || !_scanData || _session != session) {
-        await _stopColor(); return;
+        await _colorClient.stop(generation: camera['generation'] as int);
+        return;
       }
       setState(() {
         _colorTexture = camera['textureId'] as int;
