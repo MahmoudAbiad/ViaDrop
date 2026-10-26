@@ -14,6 +14,18 @@ if(ANDROID)
   add_compile_options(-femulated-tls)
 endif()
 add_subdirectory("${CIMBAR_SOURCE}" upstream)
+if(ANDROID)
+  # The upstream project enables IPO on its targets. ARM32 LTO lowers its
+  # thread_local config to unsupported ELF TLS even with emutls requested.
+  # Compile native objects instead; ordinary Release optimizations remain on.
+  foreach(part cimb_translator extractor correct_static wirehair zstd
+               zstd-compress zstd-common zstd-decompress
+               correct-reed-solomon correct-convolutional)
+    if(TARGET ${part})
+      set_property(TARGET ${part} PROPERTY INTERPROCEDURAL_OPTIMIZATION FALSE)
+    endif()
+  endforeach()
+endif()
 add_library(viadrop_color_codec STATIC codec.cpp)
 target_include_directories(viadrop_color_codec PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}" PRIVATE "${CIMBAR_SOURCE}/src/lib" "${CIMBAR_SOURCE}/src/third_party_lib" ${OpenCV_INCLUDE_DIRS})
 find_package(OpenCV REQUIRED)
