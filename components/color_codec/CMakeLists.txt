@@ -9,6 +9,9 @@ set(DISABLE_TESTS TRUE)
 if(ANDROID)
   # Android libc++ already supplies std::filesystem; libstdc++fs is a host lib.
   set(CPPFILESYSTEM "")
+  # API 23 needs emulated TLS. Carry the choice through both compilation
+  # and the LTO link backend (not just the individual source files).
+  add_compile_options(-femulated-tls)
 endif()
 add_subdirectory("${CIMBAR_SOURCE}" upstream)
 add_library(viadrop_color_codec STATIC codec.cpp)
@@ -29,5 +32,5 @@ target_include_directories(viadrop_color_jni PRIVATE ${JNI_INCLUDE_DIRS})
 target_link_libraries(viadrop_color_jni PRIVATE viadrop_color_codec)
 
 if(ANDROID)
-  target_link_options(viadrop_color_jni PRIVATE "-Wl,-z,max-page-size=16384")
+  target_link_options(viadrop_color_jni PRIVATE -femulated-tls "-Wl,-z,max-page-size=16384")
 endif()
