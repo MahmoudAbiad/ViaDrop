@@ -33,11 +33,4 @@ grep -F 'Java_app_viadrop_color_ColorCodec_decode' "$work/symbols.txt"
 echo "PASS Android native color codec cross-build: $abi (not a device runtime test)"
 # Compile production Java adapters against the minimum supported Android API,
 # not host JVM classes or the runner's newest platform API.
-mkdir -p "$work/classes"
-javac -source 8 -target 8 \
- -bootclasspath "$ANDROID_HOME/platforms/android-23/android.jar" \
- -d "$work/classes" \
- "$root/components/color_codec/java/app/viadrop/color/ColorCodec.java" \
- "$root/components/color_codec/java/app/viadrop/color/Yuv420Rgb.java" \
- "$root/components/color_codec/android/app/viadrop/color/CameraImageDecoder.java"
-echo "PASS Android API23 Java camera image adapter compilation"
+bash "$root/tools/cimbar/android-java-check.sh"

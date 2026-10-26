@@ -7,6 +7,19 @@ on:
 permissions:
   contents: read
 jobs:
+  android-camera-api23:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install minimum supported Android platform
+        run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" "platforms;android-23"'
+      - name: Compile camera lifecycle and pixel adapters against API23
+        run: bash tools/cimbar/android-java-check.sh
   color-codec-roundtrip:
     runs-on: ubuntu-24.04
     timeout-minutes: 25

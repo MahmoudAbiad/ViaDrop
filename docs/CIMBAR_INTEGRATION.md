@@ -107,3 +107,20 @@ explicitly; there is no silent format substitution. Camera opening/session
 management, bounded frame scheduling with cancellation generation, Flutter
 rendering, packaging/notices and physical two-device tests are still pending.
 No APK yet includes or advertises the color codec.
+
+
+## Camera session and surface renderer implementation
+
+The isolated component now implements Camera2 capture (`ColorCameraSession`)
+and packet-to-Surface presentation (`ColorFrameRenderer`). The capture path has
+separate camera/decode loopers, bounded Image ownership, frame dropping, stale
+callback suppression and ordered asynchronous teardown. The sender provides
+backpressure and reuses its bitmap/ARGB buffers; it requires at least 1024x1024
+surface pixels and does not claim suitability for the J7 display.
+
+The SDK23 compile check now runs independently of the slower native build.
+Compilation does not validate actual Camera2 output combinations, color-space
+selection, optics, lifecycle race behavior or on-screen readability. Flutter
+platform channel/texture binding, permission flow, pause/resume, profile gating,
+packaging and the dependency/source distribution bundle remain outstanding.
+No color APK or two-phone test is available from this change.

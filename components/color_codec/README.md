@@ -17,8 +17,9 @@ the upstream extractor path. Bad data produces no output packet.
 Host C++/JVM tests are separate from the Android ARM32/ARM64 cross-builds.
 Neither is a physical camera runtime test. RGB
 rows can be padded; YUV-to-RGB conversion and rotation are implemented and tested separately.
-Capture scheduling, generation cancellation and Flutter display remain to implement. Call on a bounded
-worker; never on Flutter/Android UI thread. No color option is enabled in the app.
+Camera scheduling and generation cancellation are implemented in the Android
+session below. Flutter display/session binding remains pending. Never encode
+or decode on the Flutter/Android UI thread. No color option is enabled in the app.
 
 CI exercises binary packets, stride padding, malformed buffers and bounds.
 Passing host tests does not establish camera robustness, transfer rate, Android
@@ -29,13 +30,41 @@ intentionally does not yet include this component.
 row/pixel strides, buffer offsets, and 0/90/180/270-degree rotation. Matrix
 selection is explicit (limited-range BT.601 or BT.709); the camera adapter must
 supply the actual color space or reject unsupported/unknown data spaces. It is
-not yet connected to an Android ImageReader/CameraX lifecycle. The input image
-must remain open during conversion and be closed by the caller afterward.
+connected through ColorCameraSession to a Camera2 ImageReader. The input image
+remains open during conversion and CameraImageDecoder closes it afterward.
 
 The Android-specific `CameraImageDecoder` now accepts a real `android.media.Image`,
 requires YUV_420_888, converts/rotates its planes and calls native extraction.
 It closes the acquired image in a finally block, including on errors. Its source
 is compiled against API23 separately from host-JVM tests. This is a per-image
-adapter, not camera opening/session management or a Flutter screen. Capture
-scheduling, cancellation generations, runtime permission and display integration
-are still pending. It requires an explicit supported limited-range color matrix.
+adapter, not a Flutter screen. It requires an explicit supported limited-range
+color matrix.
+
+
+## Android camera and display surfaces
+
+`ColorCameraSession` owns Camera2 open/configure/repeating capture and a
+YUV_420_888 ImageReader (three slots). Camera callbacks and decode use separate
+HandlerThreads. At most one Image enters decoding; incoming excess frames are
+closed, acquireLatestImage discards stale queued frames, and at most one packet
+callback waits on the main thread. A session generation suppresses old results
+on stop/restart, including results already posted to main. Stop does not
+interrupt native decoding. Reader closure is queued after the worker releases
+its Image. Disposal keeps the camera callback looper alive until pending opens
+close their devices. Use close(onReleased) before releasing a preview Surface.
+
+`ColorFrameRenderer` encodes actual packet bytes on a dedicated worker and draws
+1024x1024 colored pixels onto a caller-owned Android Surface. It reuses one
+bitmap and ARGB buffer, uses nearest/integer scaling, and rejects a surface
+smaller than 1024 pixels on either axis. One frame may be outstanding, including
+its main-thread completion; present(false) means busy, never delivered. Cancel
+suppresses completion, but cannot undo a frame already posted to the surface.
+Use close(onReleased) before releasing the caller Surface. An onPresented event
+only means display submission, not successful reception or measured goodput.
+
+These classes use only API23 interfaces and are checked in a dedicated quick
+CI job before the native matrix completes. Camera permission, pixel dimensions,
+physical orientation, explicit color matrix, SurfaceTexture ownership and app
+pause/resume must be supplied by the upcoming Flutter platform binding. Neither
+class is packaged into the application yet. No physical device runtime result
+is claimed, and lifecycle behavior still requires instrumented/device tests.
