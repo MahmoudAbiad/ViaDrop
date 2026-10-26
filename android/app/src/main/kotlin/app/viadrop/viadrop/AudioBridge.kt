@@ -223,6 +223,9 @@ class AudioBridge(private val context: Context, engine: FlutterEngine, private v
             val samples = ShortArray(1024)
             val bytes = ByteArray(2048)
             val packed = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer()
+            // Bind the original Buffer setter signature on legacy Android,
+            // rather than a newer SDK's covariant ShortBuffer overload.
+            val cursor: java.nio.Buffer = packed
             var lastRead = SystemClock.elapsedRealtime()
             while (s.running.get()) {
                 val n = recording.read(samples, 0, samples.size, AudioRecord.READ_NON_BLOCKING)
@@ -233,7 +236,7 @@ class AudioBridge(private val context: Context, engine: FlutterEngine, private v
                     Thread.sleep(5); continue
                 }
                 lastRead = SystemClock.elapsedRealtime()
-                packed.position(0); packed.put(samples, 0, n)
+                cursor.position(0); packed.put(samples, 0, n)
                 if (s.fast) {
                     val copy = bytes.copyOf(n*2)
                     if (!s.pcm.offer(copy)) { s.pcm.clear(); s.pcm.offer(copy) }

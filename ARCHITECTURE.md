@@ -69,3 +69,16 @@ OpticalStartup invalidates pending preparation across stop/disposal. A shared
 WakeLockCoordinator serializes plugin operations using camera/audio screen
 leases, so late cleanup cannot disable another route's wakelock. See
 [the lifecycle regression report](docs/LIFECYCLE_0_3_1.md).
+
+
+## Acoustic ownership and worker drain (0.3.2)
+
+AudioBridge now owns independent acoustic method/event channels and delegates to
+the existing JNI codecs through AudioCodec. AudioClient assigns one client per
+operation before awaiting microphone permission. NativeSessionState is the
+renamed shared color/audio ownership arbiter; SessionWorkDrain accounts for
+queued and executing worker cleanup before a stop reply can release ownership.
+Hardware and native handles are worker-local; cancellation signals nonblocking
+PCM loops and never releases their objects on the UI thread. TransferManager
+captures isolate operation tokens and suppresses notifications after disposal.
+See [the acoustic lifecycle report](docs/AUDIO_LIFECYCLE_0_3_2.md).

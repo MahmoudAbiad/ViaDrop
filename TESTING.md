@@ -190,3 +190,18 @@ completed 10,000 lifecycle cycles / 20,000 exactly-once stop replies. Native
 API23 compilation also passed in evaluation run 40269565499 at ceb62d6; native
 ownership source is unchanged in the final app revision. These automated
 results do not change the unexecuted physical-device statuses above.
+
+
+## 0.3.2 acoustic lifecycle regressions
+
+The real native ownership/worker-barrier classes are exercised by
+`bash tools/test_native_lifecycle.sh`; the old test_color_lifecycle.sh command
+is a compatibility wrapper. Local host simulation passed both the existing
+10,000 session cycles and 10,000 two-worker acoustic cleanup cycles. Native
+ownership helpers additionally compile against API23 when that platform is
+installed. This does not instantiate Android audio hardware.
+
+See [the acoustic report](docs/AUDIO_LIFECYCLE_0_3_2.md) for permission, queued
+work, event identity and real-file/isolate cancellation tests. Final complete
+APK/analysis/test results are recorded with their exact source revision below.
+Physical acoustic acceptance remains unexecuted.
