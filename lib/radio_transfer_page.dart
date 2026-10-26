@@ -95,8 +95,9 @@ class _RadioTransferPageState extends State<RadioTransferPage> with WidgetsBindi
           onError: _transportError,
         );
       } else {
-        engine = BluetoothEngine();
-        _nativeSub = engine.events.listen(_handleNativeEvent,
+        final bluetooth=BluetoothEngine();
+        engine = bluetooth;
+        _nativeSub = bluetooth.events.listen(_handleNativeEvent,
             onError: (Object error) => _show(error.toString()));
       }
       _engine = engine;
