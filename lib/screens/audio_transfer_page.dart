@@ -314,7 +314,10 @@ class _AudioTransferPageState extends State<AudioTransferPage> with WidgetsBindi
         );
         return;
       }
-      _finalizing = true;
+      setState(() {
+        _finalizing = true; _receiving = false;
+        _status = 'اكتملت البيانات. جارٍ تحرير الميكروفون والتحقق من الملف...';
+      });
       unawaited(_finishReceive(client, complete));
     } catch (error) {
       if (_decoder.header == null) {
@@ -338,12 +341,16 @@ class _AudioTransferPageState extends State<AudioTransferPage> with WidgetsBindi
   Future<void> _finishReceive(AudioClient client, Uint8List encryptedData) async {
     File? temp;
     try {
+      final secret = _session?.passphrase;
+      if (secret == null) throw StateError('Missing acoustic session');
+      // Stop capture as soon as the encrypted payload is reconstructed. File
+      // verification has its own manager token and does not need an open mic.
+      await client.stop();
+      if (!_owns(client) || _manager.token.cancelled) throw const TransferCancelled();
       temp = File('${_manager.work.path}/audio-${DateTime.now().microsecondsSinceEpoch}.vdp');
       await temp.writeAsBytes(encryptedData, flush: true);
-      client.check();
-      final received = await _manager.accept(
-        temp, _session!.passphrase, Channel.audio,
-      );
+      if (_manager.token.cancelled) throw const TransferCancelled();
+      final received = await _manager.accept(temp, secret, Channel.audio);
       if (mounted) setState(() {
         _result = received;
         _progress = 1;
@@ -499,7 +506,7 @@ class _AudioTransferPageState extends State<AudioTransferPage> with WidgetsBindi
                 icon: const Icon(Icons.mic),
                 label: const Text('استقبال • استماع صامت'),
               ),
-            if (_receiving || _listenStarting)
+            if (_receiving || _listenStarting || _finalizing)
               FilledButton.tonalIcon(
                 onPressed: _stopReceive,
                 icon: const Icon(Icons.mic_off),

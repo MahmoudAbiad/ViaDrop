@@ -44,8 +44,6 @@ class AudioBridge(private val context: Context, engine: FlutterEngine, private v
         val running = AtomicBoolean(true)
         val drain = SessionWorkDrain()
         val pcm = ArrayBlockingQueue<ByteArray>(48)
-        @Volatile var recorder: AudioRecord? = null
-        @Volatile var track: AudioTrack? = null
         var startReply: MethodChannel.Result? = null
         var playReply: MethodChannel.Result? = null
         var timeout: Runnable? = null
@@ -184,7 +182,7 @@ class AudioBridge(private val context: Context, engine: FlutterEngine, private v
                 .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build())
                 .setAudioFormat(AudioFormat.Builder().setSampleRate(48000).setChannelMask(AudioFormat.CHANNEL_OUT_MONO).setEncoding(AudioFormat.ENCODING_PCM_16BIT).build())
                 .setBufferSizeInBytes(maxOf(min, 8192)).setTransferMode(AudioTrack.MODE_STREAM).build()
-            player = output; s.track = output
+            player = output
             check(output.state == AudioTrack.STATE_INITIALIZED) { "Speaker initialization failed" }
             if (!s.running.get()) return
             output.play()
@@ -203,7 +201,7 @@ class AudioBridge(private val context: Context, engine: FlutterEngine, private v
             }
         } finally {
             try { if (player != null) { try { player.stop() } catch (_: Exception) {} ; player.release() } }
-            finally { s.track = null; if (handle >= 0) codec.waveFree(handle) }
+            finally { if (handle >= 0) codec.waveFree(handle) }
         }
     }
 
@@ -217,7 +215,7 @@ class AudioBridge(private val context: Context, engine: FlutterEngine, private v
             check(min > 0) { "PCM microphone unavailable" }
             val recording = AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, 48000,
                 AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, maxOf(min, 8192))
-            input = recording; s.recorder = recording
+            input = recording
             check(recording.state == AudioRecord.STATE_INITIALIZED) { "Microphone initialization failed" }
             if (!s.running.get()) return
             recording.startRecording(); ready(s, true)
@@ -243,7 +241,7 @@ class AudioBridge(private val context: Context, engine: FlutterEngine, private v
             }
         } finally {
             try { if (input != null) { try { input.stop() } catch (_: Exception) {} ; input.release() } }
-            finally { s.recorder = null; if (handle >= 0) codec.waveFree(handle) }
+            finally { if (handle >= 0) codec.waveFree(handle) }
         }
     }
     private fun decodeOfdm(s: Session) {
@@ -267,9 +265,9 @@ class AudioBridge(private val context: Context, engine: FlutterEngine, private v
         s.running.set(false); cancelTimeout(s)
         val start = s.startReply; s.startReply = null; errorReply(start, "AUDIO_CANCELLED", "Audio session cancelled")
         val play = s.playReply; s.playReply = null; errorReply(play, "AUDIO_CANCELLED", "Audio playback cancelled")
-        // Workers release hardware/codec handles in finally, never this caller.
-        try { s.recorder?.stop() } catch (_: Exception) {}
-        try { s.track?.pause(); s.track?.flush() } catch (_: Exception) {}
+        // Both PCM loops are nonblocking. The owner worker observes running
+        // and stops/releases its own hardware in finally; UI never calls a
+        // driver stop/release or races a worker that is still using the object.
         s.pcm.clear(); s.pcm.offer(ByteArray(0))
         s.drain.seal {
             if (session === s) session = null

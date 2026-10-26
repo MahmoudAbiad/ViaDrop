@@ -21,7 +21,7 @@ void main() {
   tearDown(() async { manager.dispose(); await root.delete(recursive: true); });
   test('dispose during encryption suppresses result and deletes temporary ciphertext', () async {
     manager.begin();
-    final preparing = manager.prepare(input, 'test-secret');
+    final preparing = manager.prepare(input, 'test-acoustic-secret-123');
     manager.dispose();
     await expectLater(preparing, throwsA(isA<TransferCancelled>()));
     expect(await manager.work.list().toList(), isEmpty);
@@ -30,7 +30,7 @@ void main() {
   });
   test('an older encryption result cannot become part of a new operation', () async {
     manager.begin();
-    final preparing = manager.prepare(input, 'test-secret');
+    final preparing = manager.prepare(input, 'test-acoustic-secret-123');
     manager.begin(); final newer = manager.token;
     await expectLater(preparing, throwsA(isA<TransferCancelled>()));
     expect(identical(manager.token, newer), isTrue);
@@ -40,9 +40,9 @@ void main() {
   });
   test('dispose during verification never publishes an accepted file or history', () async {
     final envelope = File('${root.path}/source.vdp');
-    await Vault.seal(input, envelope, 'test-secret', CancelToken());
+    await Vault.seal(input, envelope, 'test-acoustic-secret-123', CancelToken());
     manager.begin();
-    final accepting = manager.accept(envelope, 'test-secret', Channel.audio);
+    final accepting = manager.accept(envelope, 'test-acoustic-secret-123', Channel.audio);
     manager.dispose();
     await expectLater(accepting, throwsA(isA<TransferCancelled>()));
     expect(await manager.received.list().toList(), isEmpty);

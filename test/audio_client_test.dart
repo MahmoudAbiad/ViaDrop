@@ -48,7 +48,7 @@ void main() {
     messenger.setMockMethodCallHandler(AudioClient.methods, (call) async {
       methods.add(call.method);
       if (call.method == 'openSend') return {'generation': 4};
-      if (call.method == 'play') return playing.future;
+      if (call.method == 'play') { await playing.future; return null; }
       return null;
     });
     final client = AudioClient(microphonePermission: () async { fail('Sender requested microphone'); });
