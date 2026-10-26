@@ -15,7 +15,6 @@ import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 import java.io.*
 import java.util.UUID
-import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
@@ -41,8 +40,7 @@ class BluetoothBridge(private val activity: FlutterActivity, engine: FlutterEngi
   @Volatile var server:BluetoothServerSocket?=null
   @Volatile var deadline=Long.MAX_VALUE
   @Volatile var error:String?=null
-  @Volatile var decisionId=0L
-  val decisions=ArrayBlockingQueue<Boolean>(1)
+  val decisions=RadioDecisionGate()
   val stops=mutableListOf<MethodChannel.Result>() // main only
   var result:MethodChannel.Result?=null // main only
  }
@@ -96,7 +94,7 @@ class BluetoothBridge(private val activity: FlutterActivity, engine: FlutterEngi
      }
      "decision"->{
       val s=active;val id=call.argument<Number>("decisionId")?.toLong()
-      if(s!=null&&s.running&&s.client==client&&id!=null&&id==s.decisionId){s.decisions.offer(call.argument<Boolean>("accept")==true)}
+      if(s!=null&&s.running&&s.client==client&&id!=null){s.decisions.answer(id,call.argument<Boolean>("accept")==true)}
       result.success(null)
      }
      "stop"->{val s=active;if(s==null||s.client!=client)result.success(null) else stop(s,result)}
@@ -116,10 +114,10 @@ class BluetoothBridge(private val activity: FlutterActivity, engine: FlutterEngi
  }
  private fun ready(s:Session){main.post {if(active===s&&s.running){val r=s.result;s.result=null;try{r?.success(mapOf("generation" to s.generation))}catch(_:RuntimeException){}}}}
  private fun decide(s:Session,type:String,extra:Map<String,Any>,seconds:Long):Boolean {
-  s.decisions.clear();val id=ids.incrementAndGet();s.decisionId=id
+  val id=ids.incrementAndGet();s.decisions.begin(id)
   // The watchdog also closes the socket if Flutter goes away during consent.
   deadline(s,seconds+5);emit(s,extra+mapOf("type" to type,"decisionId" to id))
-  val answer=s.decisions.poll(seconds,TimeUnit.SECONDS)==true;s.decisionId=0;checkRunning(s);return answer
+  val answer=s.decisions.await(id,TimeUnit.SECONDS.toMillis(seconds));checkRunning(s);return answer
  }
  private fun send(s:Session,address:String,path:String){
   val a=adapter?:throw IOException("Bluetooth unavailable")
@@ -168,10 +166,10 @@ class BluetoothBridge(private val activity: FlutterActivity, engine: FlutterEngi
    finally{file?.delete();try{socket.close()}catch(_:IOException){};if(s.socket===socket)s.socket=null;s.deadline=Long.MAX_VALUE}
   }
  }
- private fun close(s:Session){try{s.socket?.close()}catch(_:IOException){};try{s.server?.close()}catch(_:IOException){};s.decisions.offer(false)}
+ private fun close(s:Session){try{s.socket?.close()}catch(_:IOException){};try{s.server?.close()}catch(_:IOException){};s.decisions.cancel()}
  private fun stop(s:Session,result:MethodChannel.Result?=null){
   if(result!=null)s.stops.add(result)
-  s.running=false;s.decisionId=0;s.decisions.offer(false)
+  s.running=false;s.decisions.cancel()
   // BluetoothSocket.close unblocks connect/read/accept. Never wait on UI thread.
   guard.execute{close(s)}
  }
