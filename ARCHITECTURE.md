@@ -23,7 +23,9 @@
   CRC validation and session-bound reconstruction. Screens call QR/camera or
   speaker/microphone adapters only. These paths have no LAN/Bluetooth fallback.
 - `lib/engines/lan.dart`: custom LAN protocol, not LocalSend wire compatibility.
-- `lib/engines/native.dart` and Kotlin MainActivity: Android Bluetooth and audio I/O.
+- `lib/engines/native.dart` and Kotlin MainActivity: capability probing and shared-content bridge.
+- `lib/engines/bluetooth.dart` and Kotlin BluetoothBridge: dedicated secure bonded RFCOMM I/O.
+- `lib/engines/audio_client.dart` and Kotlin AudioBridge: dedicated acoustic I/O.
 - `lib/screens`: physical-channel UX; `radio_transfer_page.dart`: LAN/Bluetooth UX.
 
 Security trade-off: VDS2 physically broadcasts the symmetric encryption secret.
@@ -82,3 +84,22 @@ Hardware and native handles are worker-local; cancellation signals nonblocking
 PCM loops and never releases their objects on the UI thread. TransferManager
 captures isolate operation tokens and suppresses notifications after disposal.
 See [the acoustic lifecycle report](docs/AUDIO_LIFECYCLE_0_3_2.md).
+
+
+## Radio integration (0.4.0)
+
+LAN uses private IPv4 announcements and a consent-bound, expiring one-use
+upload ticket. IOSink/HTTP streams apply backpressure; received ciphertext
+remains temporary until the common Vault verifies it. No per-packet whole-file
+allocation or hidden transfer handoff. LAN metadata is not encrypted.
+
+BluetoothBridge reserves one client-owned session, with a worker owning its
+socket/server lifetime. A watchdog closes stalled sockets off the UI thread;
+stop replies wait until worker cleanup. RadioDecisionGate atomically matches
+and delivers one consent reply to its exact globally unique request ID, so an
+old offer approval cannot satisfy final file verification. Flutter clients
+observe a shared Bluetooth-only event stream filtered by identity/generation.
+
+Radio routes retain separate staging folders and operation/wakelock leases.
+Backgrounding cancels sessions; no foreground-service guarantee or resume is
+advertised. See [radio implementation and device gates](docs/RADIO_0_4_0.md).

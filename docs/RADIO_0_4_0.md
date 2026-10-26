@@ -36,6 +36,7 @@
 - https://developer.android.com/develop/connectivity/bluetooth/connect-bluetooth-devices
 - https://developer.android.com/develop/connectivity/wifi/wifi-aware
 - https://developer.android.com/develop/connectivity/wifi/wifip2p
+- https://developer.android.com/privacy-and-security/local-network-permission
 
 Wi-Fi Aware is a future capability for supporting Android 8+ hardware. It
 cannot serve Android 6 J7. Wi-Fi Direct is a separate planned adapter, not a
@@ -45,9 +46,27 @@ radios physically present in these phones. Nearby Connections mixes radios,
 so it is not used as a silent implementation of either manually chosen channel.
 No new third-party dependency was imported for this change.
 
+The pinned modern Flutter 3.47.8 extension currently sets compile/target SDK 36
+(source: https://github.com/flutter/flutter/blob/3.47.8/packages/flutter_tools/gradle/src/main/kotlin/FlutterExtension.kt).
+Android 17 enforces ACCESS_LOCAL_NETWORK for target SDK 37+, so that future
+upgrade must conditionally declare/request the new runtime permission before
+LAN sockets start. Official guidance says not to add/request it for targets
+36 or lower. This build does not opt into Android 16 local-network protection;
+it does not claim Android 17 target-37 readiness.
+
 ## Validation
 
-Automated test/build results will be recorded after CI completes. New tests
+Validated code: `ac00cec86aa30afdfdcf59492795501f0a32fbfb`.
+
+- Modern ARM64 [run 40363004012](https://github.com/MahmoudAbiad/ViaDrop/actions/runs/40363004012): **78 Flutter tests**, analysis, native simulations, build, v2 signature, ABI/minSdk/notices checks passed. APK 36,008,353 bytes.
+- Android 6 ARM32 [run 40363003989](https://github.com/MahmoudAbiad/ViaDrop/actions/runs/40363003989): **78 Flutter tests**, analysis, native simulations, build, v1+v2 signature, ABI/minSdk/notices checks passed. APK 28,021,522 bytes.
+- [Native color/API evaluation 40363003986](https://github.com/MahmoudAbiad/ViaDrop/actions/runs/40363003986): all four jobs passed.
+- Native session 10,000 cycles, two-worker audio teardown 10,000 cycles, and atomic radio consent/verification mailbox 10,000 stale-reply cycles passed. The latter covers expiry, cancellation wakeup, duplicates and wrong request IDs; it does not simulate Bluetooth radio hardware.
+- Downloaded artifact ZIP digests matched GitHub; extracted APK sizes matched CI. Exact ZIP digests, separate APK SHA-256 hashes and covered-source artifact IDs are in [BUILD_0_4_0.json](BUILD_0_4_0.json).
+- Release APKs use internal test signing, not a production distribution key.
+- Hardware installation, actual Wi-Fi/Bluetooth transfer, device memory/throughput, microphone, speaker and camera tests remain **NOT EXECUTED**.
+
+New tests
 exercise real host LAN encrypted roundtrip, refusal, wrong passphrase, empty
 Arabic-named file, cancellation during consent, forbidden public IP, and Dart
 Bluetooth permission/client/decision/cancellation boundaries. These are NOT

@@ -215,3 +215,20 @@ permission, native readiness, playback and event-identity cases. Generic state
 and acoustic worker-drain models each exercised 10,000 cycles. No handset
 installation, microphone/speaker loopback or two-phone transfer was performed.
 See docs/AUDIO_LIFECYCLE_0_3_2.md and docs/BUILD_0_3_2.json for evidence.
+
+
+## Radio integration 0.4.0
+
+Code `ac00cec86aa30afdfdcf59492795501f0a32fbfb` passed **78 Flutter tests**
+on both dependency profiles, static analysis, native simulations and signed
+release APK builds. The real TCP/UDP host tests include encrypted roundtrip,
+receiver refusal, incorrect passphrase, empty Arabic-named files, cancellation
+during consent, partial startup cleanup and prohibited public addresses.
+Bluetooth method-channel tests check permissions, client identity, exact decision
+IDs, joined stops and pre-cancelled sends. A host JVM exercises the production
+RadioDecisionGate, including 10,000 stale reply cycles. A widget test compiles
+and renders the four-channel home page. No physical radio result is inferred.
+
+See [radio build provenance and device acceptance checklist](docs/RADIO_0_4_0.md)
+and [exact artifact IDs/digests](docs/BUILD_0_4_0.json). Native/reference tests
+and host networking do not establish on-phone RFCOMM correctness or speed.
