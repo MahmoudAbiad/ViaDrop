@@ -29,9 +29,9 @@ void roundTrip(int size, ggwave_ProtocolId mode, bool noisy) {
         }
     }
     bool matched = false;
-    for (size_t offset = 0; offset < pcm.size(); offset += 2048) {
+    for (size_t offset = 0; offset < pcm.size(); offset += 1024) {
         uint8_t decoded[256];
-        int bytes = static_cast<int>(std::min<size_t>(2048, pcm.size() - offset) * 2);
+        int bytes = static_cast<int>(std::min<size_t>(1024, pcm.size() - offset) * 2);
         int count = ggwave_ndecode(rx, pcm.data() + offset, bytes, decoded, sizeof decoded);
         if (count > 0) {
             if (count != size || !std::equal(data.begin(), data.end(), decoded))
@@ -47,6 +47,6 @@ void roundTrip(int size, ggwave_ProtocolId mode, bool noisy) {
 int main() {
     ggwave_setLogFile(nullptr);
     for (auto mode : {GGWAVE_PROTOCOL_AUDIBLE_FAST, GGWAVE_PROTOCOL_ULTRASOUND_FAST})
-        for (int size : {64, 132, 140})
+        for (int size : {8, 64, 73, 132, 140})
             for (bool noisy : {false, true}) roundTrip(size, mode, noisy);
 }

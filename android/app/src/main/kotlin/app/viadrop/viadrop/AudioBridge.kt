@@ -3,6 +3,10 @@ package app.viadrop.viadrop
 import android.content.Context
 import android.content.pm.PackageManager
 import android.media.*
+import android.os.Build
+import kotlin.math.abs
+import kotlin.math.log10
+import kotlin.math.sqrt
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -219,14 +223,24 @@ class AudioBridge(private val context: Context, engine: FlutterEngine, private v
             input = recording
             check(recording.state == AudioRecord.STATE_INITIALIZED) { "Microphone initialization failed" }
             if (!s.running.get()) return
-            recording.startRecording(); ready(s, true)
+            recording.startRecording()
+            check(recording.recordingState == AudioRecord.RECORDSTATE_RECORDING) { "Microphone did not enter recording state" }
+            ready(s, true)
             val samples = ShortArray(1024)
             val bytes = ByteArray(2048)
             val packed = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer()
             // Bind the original Buffer setter signature on legacy Android,
             // rather than a newer SDK's covariant ShortBuffer overload.
             val cursor: java.nio.Buffer = packed
-            var lastRead = SystemClock.elapsedRealtime()
+            val started = SystemClock.elapsedRealtime()
+            var lastRead = started
+            var reported = started
+            var totalSamples = 0L
+            var windowSamples = 0L
+            var squareSum = 0.0
+            var peak = 0
+            var clipped = 0L
+            var decodedPackets = 0L
             while (s.running.get()) {
                 val n = recording.read(samples, 0, samples.size, AudioRecord.READ_NON_BLOCKING)
                 if (!s.running.get()) break
@@ -236,12 +250,29 @@ class AudioBridge(private val context: Context, engine: FlutterEngine, private v
                     Thread.sleep(5); continue
                 }
                 lastRead = SystemClock.elapsedRealtime()
+                totalSamples += n; windowSamples += n
+                for (i in 0 until n) {
+                    val value = samples[i].toInt()
+                    squareSum += value.toDouble()*value
+                    peak = maxOf(peak,abs(value))
+                    if(abs(value)>=32760)clipped++
+                }
+                if(lastRead-reported>=1000) {
+                    val rms = if(windowSamples>0)sqrt(squareSum/windowSamples)/32768.0 else 0.0
+                    val route = if(Build.VERSION.SDK_INT>=24)recording.routedDevice?.type ?: -1 else -1
+                    event(s,mapOf("type" to "audioMetrics", "samples" to totalSamples,
+                        "elapsedMs" to (lastRead-started), "rmsDbfs" to (if(rms>0)20*log10(rms) else -120.0),
+                        "peak" to peak, "clipped" to clipped, "windowSamples" to windowSamples,
+                        "nativePackets" to decodedPackets, "inputRouteType" to route,
+                        "recording" to (recording.recordingState==AudioRecord.RECORDSTATE_RECORDING)))
+                    reported=lastRead;windowSamples=0;squareSum=0.0;peak=0;clipped=0
+                }
                 cursor.position(0); packed.put(samples, 0, n)
                 if (s.fast) {
                     val copy = bytes.copyOf(n*2)
                     if (!s.pcm.offer(copy)) { s.pcm.clear(); s.pcm.offer(copy) }
                 }
-                codec.waveDecode(handle, bytes, n*2)?.let { event(s, mapOf("type" to "audioData", "data" to it)) }
+                codec.waveDecode(handle, bytes, n*2)?.let { decodedPackets++;event(s, mapOf("type" to "audioData", "data" to it)) }
             }
         } finally {
             try { if (input != null) { try { input.stop() } catch (_: Exception) {} ; input.release() } }

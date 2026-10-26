@@ -9,6 +9,8 @@ import 'package:open_filex/open_filex.dart';
 import '../core/screen_awake.dart';
 
 import '../core/audio_estimate.dart';
+import '../core/audio_diagnostics.dart';
+import 'package:flutter/services.dart';
 import '../core/manager.dart';
 import '../core/one_way_session.dart';
 import '../core/physical_profiles.dart';
@@ -43,6 +45,7 @@ class _AudioTransferPageState extends State<AudioTransferPage> with WidgetsBindi
   File? _result;
   PhysicalDecoder _decoder = PhysicalDecoder(64 * 1024);
   CancelToken? _sendToken;
+  AudioDiagnostics _diagnostics=AudioDiagnostics();
   bool _ready = false;
   bool _receiving = false;
   bool _listenStarting = false;
@@ -126,6 +129,25 @@ class _AudioTransferPageState extends State<AudioTransferPage> with WidgetsBindi
     if (file == null) return;
     try { if (await file.exists()) await file.delete(); }
     on FileSystemException catch (error) { debugPrint('Audio temporary cleanup failed: $error'); }
+  }
+
+  Future<void> _sendProbe()async {
+    if(!_ready||_active||!_profileSupported)return;
+    final client=AudioClient();_audioClient=client;
+    final token=CancelToken();_sendToken=token;
+    setState((){_sending=true;_status='اختبار الرابط: ثلاث رسائل قصيرة عبر GGWave Audible، دون ملف أو مفتاح.';});
+    try{
+      await client.openSender();token.check();await _awake.acquire();token.check();
+      for(var i=0;i<3;i++){
+        token.check();await client.play(Uint8List.fromList(utf8.encode(AudioDiagnostics.probe)),false);
+        await Future<void>.delayed(const Duration(seconds:1));
+      }
+      if(_owns(client))_show('انتهى اختبار الرابط. راجع عداد «اختبار الرابط» على المستقبل؛ خروج الصوت لا يؤكد الاستقبال.');
+    }on TransferCancelled{if(_owns(client))_show('تم إيقاف الاختبار.');}
+    catch(e){if(_owns(client))_show('تعذر بث الاختبار: $e');}
+    finally{
+      try{await client.stop();}finally{await _awake.release();if(_owns(client))setState(()=>_sending=false);}
+    }
   }
 
   /// The sender broadcasts the start packet; no answer is expected.
@@ -246,7 +268,7 @@ class _AudioTransferPageState extends State<AudioTransferPage> with WidgetsBindi
     _receiveFailure = null;
     setState(() { _listenStarting = true; _status = 'جارٍ تجهيز الاستماع وطلب إذن الميكروفون عند الحاجة...'; });
     try {
-      _session = null; _result = null;
+      _session = null; _result = null;_diagnostics=AudioDiagnostics();
       _decoder = PhysicalDecoder(64 * 1024);
       _manager.begin(); _manager.update(Phase.waiting);
       _events = client.events.listen((event) => _handleEvent(client, event),
@@ -275,17 +297,21 @@ class _AudioTransferPageState extends State<AudioTransferPage> with WidgetsBindi
       unawaited(_failReceive(client, 'المودم الصوتي: ${event['message'] ?? 'خطأ'}'));
       return;
     }
-    if (!_receiving || event['type'] != 'audioData') return;
+    if(event['type']=='audioMetrics'){setState(()=>_diagnostics.metrics(event));return;}
+    if ((!_receiving&&!_listenStarting) || event['type'] != 'audioData') return;
     final raw = event['data'];
     if (raw is! List<int>) return;
     final bytes = Uint8List.fromList(raw);
+    setState(()=>_diagnostics.packets++);
 
     // Intro can arrive during initial listening or between file blocks.
     // Lock to the first valid session and reject unrelated broadcasts.
     final text = utf8.decode(bytes, allowMalformed: true);
+    if(text==AudioDiagnostics.probe){setState(()=>_diagnostics.probes++);_show('نجح فك إشارة اختبار الرابط. الآن يمكن اختبار رسالة بداية الملف.');return;}
     if (text.startsWith(OneWaySession.prefix)) {
       final incoming = OneWaySession.parse(text);
-      if (incoming == null) return;
+      if (incoming == null){setState(()=>_diagnostics.invalidStarts++);return;}
+      setState(()=>_diagnostics.starts++);
       if (_session == null) {
         final other = physicalProfileById(incoming.profileId);
         if (other?.medium != PhysicalMedium.audio ||
@@ -460,6 +486,7 @@ class _AudioTransferPageState extends State<AudioTransferPage> with WidgetsBindi
             }),
           ),
           if (_sendMode) ...[
+            OutlinedButton.icon(onPressed:_ready&&!_active&&_profileSupported?_sendProbe:null,icon:const Icon(Icons.hearing),label:const Text('اختبار الرابط الصوتي فقط • دون ملف')),
             TextField(
               controller: _text,
               onChanged: (_) => setState(() {}),
@@ -527,6 +554,10 @@ class _AudioTransferPageState extends State<AudioTransferPage> with WidgetsBindi
             padding: const EdgeInsets.all(16),
             child: SelectableText(_status),
           )),
+          if(!_sendMode)...[
+            Card(child:Padding(padding:const EdgeInsets.all(12),child:SelectableText(_diagnostics.report))),
+            TextButton.icon(onPressed:()async{await Clipboard.setData(ClipboardData(text:'ViaDrop 0.4.1 | ${_profileId??"unknown"}\n${_diagnostics.report}'));},icon:const Icon(Icons.copy),label:const Text('نسخ التشخيص — دون تسجيل صوتي أو محتوى الملف')),
+          ],
           const SizedBox(height: 8),
           const Text(
             'الصوت باتجاه واحد بلا اقتران متبادل. أي جهاز قريب يسمع رسالة '
