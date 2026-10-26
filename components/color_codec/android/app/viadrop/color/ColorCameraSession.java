@@ -83,7 +83,7 @@ public final class ColorCameraSession implements AutoCloseable {
             (clockwiseDegrees != 0 && clockwiseDegrees != 90 && clockwiseDegrees != 180 && clockwiseDegrees != 270) ||
             (preview != null && !preview.isValid())) throw new IllegalArgumentException("Camera configuration");
         long token = generation.incrementAndGet();
-        cameraHandler.post(() -> {
+        cameraHandler.post(new Runnable() { @Override public void run() {
             releaseCamera();
             if (generation.get() != token) return;
             try {
@@ -97,7 +97,11 @@ public final class ColorCameraSession implements AutoCloseable {
                 if (!supported) throw new IllegalArgumentException("YUV capture size unavailable");
                 final ImageReader output = ImageReader.newInstance(size.getWidth(), size.getHeight(), ImageFormat.YUV_420_888, 3);
                 reader = output;
-                output.setOnImageAvailableListener(r -> acquire(r, token, clockwiseDegrees, matrix), cameraHandler);
+                output.setOnImageAvailableListener(new ImageReader.OnImageAvailableListener() {
+                    @Override public void onImageAvailable(ImageReader source) {
+                        acquire(source, token, clockwiseDegrees, matrix);
+                    }
+                }, cameraHandler);
                 CameraDevice.StateCallback callback = new CameraDevice.StateCallback() {
                     @Override public void onOpened(CameraDevice opened) {
                         if (generation.get() != token) { opened.close(); return; }
@@ -121,7 +125,7 @@ public final class ColorCameraSession implements AutoCloseable {
                 try { manager.openCamera(cameraId, callback, cameraHandler); }
                 catch (Exception e) { outstandingDevices--; throw e; }
             } catch (Exception e) { fail(token, "CAMERA_START", detail(e)); }
-        });
+        }});
     }
 
     private void configure(CameraDevice opened, ImageReader output, Surface preview,
@@ -145,7 +149,9 @@ public final class ColorCameraSession implements AutoCloseable {
                             }
                         }
                         configured.setRepeatingRequest(request.build(), null, cameraHandler);
-                        main.post(() -> { if (generation.get() == token) listener.onReady(size.getWidth(), size.getHeight()); });
+                        main.post(new Runnable() { @Override public void run() {
+                            if (generation.get() == token) listener.onReady(size.getWidth(), size.getHeight());
+                        }});
                     } catch (Exception e) { fail(token, "CAMERA_CAPTURE", detail(e)); }
                 }
                 @Override public void onConfigureFailed(CameraCaptureSession failed) {
@@ -164,19 +170,19 @@ public final class ColorCameraSession implements AutoCloseable {
                 image.close(); return;
             }
             final Image owned = image;
-            if (!decodeHandler.post(() -> {
+            if (!decodeHandler.post(new Runnable() { @Override public void run() {
                 try {
                     if (generation.get() != token) { owned.close(); return; }
                     // decodeAndClose owns Image even when conversion/native code fails.
                     byte[] packet = CameraImageDecoder.decodeAndClose(owned, rotation, matrix);
-                    if (packet != null && delivering.compareAndSet(false, true)) main.post(() -> {
+                    if (packet != null && delivering.compareAndSet(false, true)) main.post(new Runnable() { @Override public void run() {
                         try { if (generation.get() == token) listener.onPacket(packet); }
                         finally { delivering.set(false); }
-                    });
+                    }});
                 } catch (RuntimeException | LinkageError e) {
                     fail(token, "COLOR_DECODE", detail(e));
                 } finally { decoding.set(false); }
-            })) {
+            }})) {
                 owned.close(); decoding.set(false);
                 fail(token, "COLOR_WORKER", "Decode worker stopped");
             }
@@ -191,7 +197,7 @@ public final class ColorCameraSession implements AutoCloseable {
         requireMain();
         if (closed) return;
         generation.incrementAndGet();
-        cameraHandler.post(this::releaseCamera);
+        cameraHandler.post(new Runnable() { @Override public void run() { releaseCamera(); }});
     }
 
     /** Caller may release its preview Surface from onReleased, after camera
@@ -203,16 +209,16 @@ public final class ColorCameraSession implements AutoCloseable {
         this.onReleased = onReleased;
         closed = true;
         generation.incrementAndGet();
-        cameraHandler.post(() -> {
+        cameraHandler.post(new Runnable() { @Override public void run() {
             disposing = true;
             releaseCamera();
             // releaseCamera queues reader.close behind the only in-flight decode.
-            decodeHandler.post(() -> {
+            decodeHandler.post(new Runnable() { @Override public void run() {
                 decodeThread.quitSafely();
                 releasedPart();
-            });
+            }});
             finishCameraThread();
-        });
+        }});
     }
 
     @Override public void close() { close(null); }
@@ -239,16 +245,16 @@ public final class ColorCameraSession implements AutoCloseable {
             retired.setOnImageAvailableListener(null, null);
             // Closing ImageReader while a worker reads its planes invalidates
             // those buffers. FIFO on the decode handler keeps them valid.
-            decodeHandler.post(retired::close);
+            decodeHandler.post(new Runnable() { @Override public void run() { retired.close(); }});
         }
     }
 
     private void fail(long token, String code, String message) {
-        main.post(() -> {
+        main.post(new Runnable() { @Override public void run() {
             if (generation.get() != token) return;
             stop();
             listener.onError(code, message);
-        });
+        }});
     }
     private static String detail(Throwable error) {
         return error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage();

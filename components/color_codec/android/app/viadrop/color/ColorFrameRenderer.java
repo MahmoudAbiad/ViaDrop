@@ -56,7 +56,7 @@ public final class ColorFrameRenderer implements AutoCloseable {
         if (!busy.compareAndSet(false, true)) return false;
         final long token = generation.get();
         final byte[] owned = packet.clone();
-        boolean queued = worker.post(() -> render(owned, token));
+        boolean queued = worker.post(new Runnable() { @Override public void run() { render(owned, token); }});
         if (!queued) busy.set(false);
         return queued;
     }
@@ -95,11 +95,11 @@ public final class ColorFrameRenderer implements AutoCloseable {
         } finally {
             final String failure = error;
             // Hold backpressure until the main callback consumes this result.
-            main.post(() -> {
+            main.post(new Runnable() { @Override public void run() {
                 busy.set(false);
                 if (generation.get() != token) return;
                 if (failure == null) listener.onPresented(); else listener.onError(failure);
-            });
+            }});
         }
     }
 
@@ -116,12 +116,12 @@ public final class ColorFrameRenderer implements AutoCloseable {
         requireMain();
         if (closed) throw new IllegalStateException("Renderer already disposed");
         closed = true; generation.incrementAndGet();
-        worker.post(() -> {
+        worker.post(new Runnable() { @Override public void run() {
             if (bitmap != null) { bitmap.recycle(); bitmap = null; }
             argb = null;
             thread.quitSafely();
             if (onReleased != null) main.post(onReleased);
-        });
+        }});
     }
 
     @Override public void close() { close(null); }
