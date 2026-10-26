@@ -29,7 +29,7 @@ notices.mkdir(parents=True, exist_ok=True)
 # Preserve all notice files delivered by the official SDK, including filenames
 # such as zlib.txt which don't themselves contain the word 'license'.
 license_dirs = [p for p in sdk.rglob('*') if p.is_dir() and p.name.lower() in ('licenses', 'license')]
-notice_files = {p for p in sdk.rglob('*') if p.is_file() and any(x in p.name.lower() for x in ('license', 'copying', 'notice'))}
+notice_files = {p for p in sdk.rglob('*') if p.is_file() and p.name.lower().startswith(('license', 'copying', 'notice'))}
 for directory in license_dirs:
     notice_files.update(p for p in directory.rglob('*') if p.is_file())
 if not notice_files:

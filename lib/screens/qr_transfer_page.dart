@@ -303,6 +303,10 @@ class _QrTransferPageState extends State<QrTransferPage> with WidgetsBindingObse
                 'اختر الوضع نفسه من القائمة على هذا الهاتف ثم امسح مرة أخرى.');
             return;
           }
+          if (physicalProfileById(session.profileId)?.color ?? false) {
+            await ((_profile?.qrFps ?? 0) >= 9 ? _streamScanner : _standardScanner).stop();
+            if (!mounted || !_scanInvite) return;
+          }
           _manager.begin();
           _manager.update(Phase.waiting);
           _decoder = PhysicalDecoder(
@@ -316,8 +320,6 @@ class _QrTransferPageState extends State<QrTransferPage> with WidgetsBindingObse
             _message = 'وصلت رسالة البدء. انتظر الرموز المتحركة على نفس الشاشة.';
           });
           if (physicalProfileById(session.profileId)?.color ?? false) {
-            await _standardScanner.stop();
-            await _streamScanner.stop();
             await WidgetsBinding.instance.endOfFrame;
             await _startColorReceiver(session);
           }
@@ -453,8 +455,9 @@ class _QrTransferPageState extends State<QrTransferPage> with WidgetsBindingObse
         _message = 'وجّه الكاميرا إلى كامل إطار الألوان. أبقِ الهاتف ثابتاً؛ التقدم يحسب من البيانات المفكوكة فعلياً.';
       });
     } catch (error) {
+      if (!mounted || _session != session || !_scanData) return;
       await _stopColor();
-      if (mounted) setState(() {
+      if (mounted && _session == session) setState(() {
         _scanData = false; _colorTexture = null; _colorGeneration = null;
         _message = 'تعذر بدء كاميرا الألوان: $error';
       });

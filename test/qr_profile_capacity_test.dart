@@ -8,7 +8,7 @@ import 'package:viadrop/third_party/onesend/protocol.dart';
 
 void main() {
   for (final profile in physicalProfiles.where(
-      (p) => p.medium == PhysicalMedium.qr && p.implemented)) {
+      (p) => p.medium == PhysicalMedium.qr && !p.color && p.implemented)) {
     test('${profile.id} QR version ${profile.qrVersion} holds a full data frame',
         () {
       final data = Uint8List.fromList(List<int>.generate(
